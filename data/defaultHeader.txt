@@ -1,0 +1,13 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"/><title>##STUDENT##</title></head><body><xmp>
+# ##FULLNAME##
+
+>> | Earned | Possible | Criteria                                         |
+>> | ------ | -------- | ------------------------------------------------ |
+>> |   15   |    15    | Intermediate Commits                             |
+>> |   60   |    60    | Technical quality (see point deductions in code) |
+>> |   15   |    15    | Coding standard compliance and program clarity   |
+>> |   10   |    10    | Following submission instructions                |
+>
+> # Feedback
+> * Nice work!
+
