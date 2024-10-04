@@ -31,6 +31,22 @@ import java.util.Scanner;
  */
 public class Utilities {
     /**
+     * Pulls all the repositories from the given link
+     * @param gitHubLink the link to the repositories
+     * @param target the directory to place the repositories
+     * @throws IOException thrown if the directory could not be accessed
+     * @throws InterruptedException thrown if the process is interrupted
+     */
+    public static void pullRepositories(String gitHubLink, Path target) throws IOException,
+            InterruptedException {
+        String[] split = gitHubLink.split(" ");
+        ProcessBuilder pb = new ProcessBuilder(split);
+        pb.directory(target.toFile());
+        Process p = pb.start();
+        p.waitFor();
+    }
+
+    /**
      * Extracts packages from GitHub repos
      *
      * @param filePath the path to the repositories
@@ -75,7 +91,7 @@ public class Utilities {
     }
 
     private static void copyFoldersExcept(Path srcDir,
-                                          Path destDir,
+                                          Path destinationDir,
                                           String... excludeFolders)
             throws IOException {
         Files.walkFileTree(srcDir, EnumSet.noneOf(FileVisitOption.class),
@@ -94,7 +110,7 @@ public class Utilities {
 
                         // Calculate the corresponding path in the "submissions" directory.
                         Path relativePath = srcDir.relativize(dir);
-                        Path destPath = destDir.resolve(relativePath);
+                        Path destPath = destinationDir.resolve(relativePath);
 
                         // Copy the directory to the "submissions" directory.
                         Files.createDirectories(destPath);
@@ -108,7 +124,7 @@ public class Utilities {
                             throws IOException {
                         // Calculate the corresponding path in the "submissions" directory.
                         Path relativePath = srcDir.relativize(file);
-                        Path destPath = destDir.resolve(relativePath);
+                        Path destPath = destinationDir.resolve(relativePath);
 
                         // Copy the file to the "submissions" directory.
                         Files.copy(file, destPath);
@@ -241,7 +257,7 @@ public class Utilities {
      * @throws IOException thrown if the file could not be accessed
      * @throws InterruptedException thrown if CheckStyle could not be run
      */
-    public static String generateCheckStyle(File file) throws IOException, InterruptedException {
+    private static String generateCheckStyle(File file) throws IOException, InterruptedException {
         String config = "-c https://csse.msoe.us/csc1110/MSOE_checkStyle.xml";
         ProcessBuilder pb = new ProcessBuilder(
                 "java",

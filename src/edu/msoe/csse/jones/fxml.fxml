@@ -15,6 +15,7 @@
 <?import javafx.scene.layout.HBox?>
 <?import javafx.scene.layout.VBox?>
 <?import javafx.scene.text.Font?>
+<?import javafx.scene.control.TextArea?>
 <VBox prefHeight="450.0" prefWidth="359.0" spacing="10.0" xmlns="http://javafx.com/javafx/21"
       xmlns:fx="http://javafx.com/fxml/1" fx:controller="edu.msoe.csse.jones.Controller">
     <MenuBar>
@@ -43,6 +44,11 @@
             </MenuItem>
         </Menu>
         <Menu mnemonicParsing="false" text="Process">
+            <MenuItem mnemonicParsing="false" onAction="#pullRepositories" text="Pull Repositories">
+                <accelerator>
+                    <KeyCodeCombination alt="UP" code="P" control="UP" meta="DOWN" shift="UP" shortcut="UP"/>
+                </accelerator>
+            </MenuItem>
             <MenuItem mnemonicParsing="false" onAction="#extractPackages" text="Extract">
                 <accelerator>
                     <KeyCodeCombination alt="UP" code="E" control="UP" meta="DOWN" shift="UP" shortcut="UP"/>
@@ -72,6 +78,14 @@
             </MenuItem>
         </Menu>
     </MenuBar>
+    <HBox alignment="CENTER_LEFT" prefHeight="46.0" prefWidth="600.0" spacing="10.0">
+        <Label text="GitHub Link"/>
+        <TextField fx:id="repositoryField" prefHeight="25.0" prefWidth="250.0"/>
+        <padding>
+            <Insets left="10.0"/>
+        </padding>
+    </HBox>
+    <Separator prefWidth="200.0"/>
     <HBox alignment="CENTER_LEFT" prefHeight="46.0" prefWidth="600.0" spacing="10.0">
         <Label text="Path"/>
         <TextField fx:id="pathField" editable="false" prefHeight="25.0" prefWidth="303.0"/>
@@ -132,4 +146,10 @@
             </Button>
         </VBox>
     </HBox>
+    <Separator prefWidth="200.0"/>
+    <TextArea minHeight="150.0" prefWidth="359.0" fx:id="feedback">
+        <VBox.margin>
+            <Insets bottom="10.0" />
+        </VBox.margin>
+    </TextArea>
 </VBox>

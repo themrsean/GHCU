@@ -12,6 +12,7 @@ import javafx.scene.Scene;
 import javafx.scene.control.Alert;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.ListView;
+import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
 import javafx.scene.control.TextInputDialog;
 import javafx.scene.layout.Pane;
@@ -51,6 +52,8 @@ public class Controller implements Initializable {
     private Path header = Paths.get("data", "defaultHeader.txt");
     private final FileChooser chooser = new FileChooser();
     @FXML
+    private TextField repositoryField;
+    @FXML
     private TextField pathField;
     @FXML
     private CheckBox checkStyleBox;
@@ -60,6 +63,8 @@ public class Controller implements Initializable {
     private TextField fullNameField;
     @FXML
     private ListView<String> listView;
+    @FXML
+    private TextArea feedback;
 
     @Override
     public void initialize(URL url, ResourceBundle resourceBundle) {
@@ -90,6 +95,7 @@ public class Controller implements Initializable {
         File file = chooser.showDialog(pathField.getScene().getWindow());
         if (file != null) {
             pathField.setText(file.getAbsolutePath());
+            addToFeedback("Working directory set.\n\n");
         }
     }
 
@@ -112,38 +118,63 @@ public class Controller implements Initializable {
             try (PrintWriter pw = new PrintWriter(new FileOutputStream(ignored.toFile(), true))) {
                 pw.append(filename.get()).append("\n");
                 ignoredFiles.add(filename.get());
+                addToFeedback(filename.get() + " added to ignored list.\n\n");
             } catch (IOException e) {
-                String[] messages = {"Could not write", "Ignored list not updated",
-                        "Cannot save changes to the ignored list"};
+                String[] messages = {"Could not write",
+                        "Ignored list not updated", "Cannot save changes to the ignored list"};
                 makeAlert(messages);
             }
         }
     }
 
     @FXML
+    private void pullRepositories() {
+        addToFeedback("Pulling down student repositories...\n\n");
+        try {
+            if (!repositoryField.getText().isEmpty() && !pathField.getText().isEmpty()) {
+                Utilities.pullRepositories(repositoryField.getText(),
+                        Paths.get(pathField.getText()));
+            }
+            addToFeedback("Pulled down all student repositories.\n\n");
+        } catch (IOException | InterruptedException e) {
+            String[] messages = {"Could not pull", "Repositories not pulled",
+                    "Cannot pull student repositories"};
+            System.out.println(e.getMessage());
+            makeAlert(messages);
+        }
+    }
+
+    @FXML
     private void extractPackages() {
         if (!pathField.getText().isEmpty()) {
+            addToFeedback("Extracting packages from repositories...\n\n");
             Utilities.extractPackages(Paths.get(pathField.getText()), ignoredFiles);
+            addToFeedback("Packages extracted.\n\n");
         }
     }
 
     @FXML
     private void extractImports() {
+        addToFeedback("Extracting imports...\n\n");
         Utilities.generateImports(Paths.get(pathField.getText(), "submissions"));
+        addToFeedback("Imports extracted.\n\n");
     }
 
     @FXML
     private void generateReports() {
+        addToFeedback("Generatign student feedback reports...\n\n");
         Utilities.generateReports(Paths.get(pathField.getText(), "submissions"),
                 listView.getItems(),
                 shortNameField.getText(),
                 fullNameField.getText(),
                 header,
                 checkStyleBox.isSelected());
+        addToFeedback("Feedback reports generated.\n\n");
     }
 
     @FXML
     private void runAll() {
+        pullRepositories();
         extractPackages();
         extractImports();
         generateReports();
@@ -154,7 +185,7 @@ public class Controller implements Initializable {
         try {
             StringBuilder sb = new StringBuilder();
             List<String> list = Files.readAllLines(Paths.get("data", "README.md"));
-            for(String s : list) {
+            for (String s : list) {
                 sb.append(s).append("\n");
             }
             String html = convertMarkdownToHtml(sb.toString());
@@ -165,9 +196,8 @@ public class Controller implements Initializable {
             pane.getChildren().add(view);
             helpWindow.setScene(new Scene(pane));
             helpWindow.show();
-        } catch(IOException e) {
-            String[] messages = {"File Not Found", "Missing manual",
-                    "Cannot load the manual file"};
+        } catch (IOException e) {
+            String[] messages = {"File Not Found", "Missing manual", "Cannot load the manual file"};
             makeAlert(messages);
         }
     }
@@ -179,8 +209,9 @@ public class Controller implements Initializable {
         Optional<String> files = input.showAndWait();
         if (files.isPresent()) {
             String[] split = files.get().trim().split(",");
-            listView.setItems(FXCollections.observableArrayList(
-                    Arrays.stream(split).map(String::trim).toList()));
+            listView.setItems(FXCollections.observableArrayList(Arrays.stream(split)
+                    .map(String::trim)
+                    .toList()));
         }
     }
 
@@ -227,5 +258,9 @@ public class Controller implements Initializable {
         Node document = parser.parse(markdownText);
         HtmlRenderer renderer = HtmlRenderer.builder().build();
         return renderer.render(document);
+    }
+
+    private void addToFeedback(String s) {
+        feedback.setText(feedback.getText() + s);
     }
 }
