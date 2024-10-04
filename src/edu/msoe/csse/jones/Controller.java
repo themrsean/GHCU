@@ -45,6 +45,10 @@ import java.util.Scanner;
  * Controller for GHCU
  */
 public class Controller implements Initializable {
+    private final Thread pullRepositoriesThread = new Thread(this::pullRepositories);
+    private final Thread extractPackagesThread = new Thread(this::extractPackages);
+    private final Thread extractImportsThread = new Thread(this::extractImports);
+    private final Thread generateReportsThread = new Thread(this::generateReports);
     private final List<String> ignoredFiles = new ArrayList<>();
     private final TextInputDialog input = new TextInputDialog();
     private final Path config = Paths.get("data", "config.txt");
@@ -87,6 +91,8 @@ public class Controller implements Initializable {
                 makeAlert(messages);
             }
         }
+        feedback.textProperty().addListener(
+                (observableValue, s, t1) -> feedback.setScrollTop(Double.MAX_VALUE));
     }
 
     @FXML
@@ -95,7 +101,7 @@ public class Controller implements Initializable {
         File file = chooser.showDialog(pathField.getScene().getWindow());
         if (file != null) {
             pathField.setText(file.getAbsolutePath());
-            addToFeedback("Working directory set.\n\n");
+            feedback.appendText("Working directory set.\n");
         }
     }
 
@@ -118,7 +124,7 @@ public class Controller implements Initializable {
             try (PrintWriter pw = new PrintWriter(new FileOutputStream(ignored.toFile(), true))) {
                 pw.append(filename.get()).append("\n");
                 ignoredFiles.add(filename.get());
-                addToFeedback(filename.get() + " added to ignored list.\n\n");
+                feedback.appendText(filename.get() + " added to ignored list.\n");
             } catch (IOException e) {
                 String[] messages = {"Could not write",
                         "Ignored list not updated", "Cannot save changes to the ignored list"};
@@ -129,13 +135,13 @@ public class Controller implements Initializable {
 
     @FXML
     private void pullRepositories() {
-        addToFeedback("Pulling down student repositories...\n\n");
+        feedback.appendText("Pulling down student repositories...\n");
         try {
             if (!repositoryField.getText().isEmpty() && !pathField.getText().isEmpty()) {
                 Utilities.pullRepositories(repositoryField.getText(),
                         Paths.get(pathField.getText()));
             }
-            addToFeedback("Pulled down all student repositories.\n\n");
+            feedback.appendText("Pulled down all student repositories.\n");
         } catch (IOException | InterruptedException e) {
             String[] messages = {"Could not pull", "Repositories not pulled",
                     "Cannot pull student repositories"};
@@ -147,37 +153,44 @@ public class Controller implements Initializable {
     @FXML
     private void extractPackages() {
         if (!pathField.getText().isEmpty()) {
-            addToFeedback("Extracting packages from repositories...\n\n");
+            feedback.appendText("Extracting packages from repositories...\n");
             Utilities.extractPackages(Paths.get(pathField.getText()), ignoredFiles);
-            addToFeedback("Packages extracted.\n\n");
+            feedback.appendText("Packages extracted.\n");
         }
     }
 
     @FXML
     private void extractImports() {
-        addToFeedback("Extracting imports...\n\n");
+        feedback.appendText("Extracting imports...\n");
         Utilities.generateImports(Paths.get(pathField.getText(), "submissions"));
-        addToFeedback("Imports extracted.\n\n");
+        feedback.appendText("Imports extracted.\n");
     }
 
     @FXML
     private void generateReports() {
-        addToFeedback("Generatign student feedback reports...\n\n");
+        feedback.appendText("Generating student feedback reports...\n");
         Utilities.generateReports(Paths.get(pathField.getText(), "submissions"),
                 listView.getItems(),
                 shortNameField.getText(),
                 fullNameField.getText(),
                 header,
                 checkStyleBox.isSelected());
-        addToFeedback("Feedback reports generated.\n\n");
+        feedback.appendText("Feedback reports generated.\n");
     }
 
     @FXML
     private void runAll() {
-        pullRepositories();
-        extractPackages();
-        extractImports();
-        generateReports();
+        try {
+            pullRepositoriesThread.start();
+            pullRepositoriesThread.join();
+            extractPackagesThread.start();
+            extractPackagesThread.join();
+            extractImportsThread.start();
+            extractImportsThread.join();
+            generateReportsThread.start();
+        } catch (InterruptedException e) {
+            System.err.println(e.getMessage());
+        }
     }
 
     @FXML
@@ -258,9 +271,5 @@ public class Controller implements Initializable {
         Node document = parser.parse(markdownText);
         HtmlRenderer renderer = HtmlRenderer.builder().build();
         return renderer.render(document);
-    }
-
-    private void addToFeedback(String s) {
-        feedback.setText(feedback.getText() + s);
     }
 }
