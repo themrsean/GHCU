@@ -1,6 +1,7 @@
 /*
  * Course: CSC-1110/1020/1120
  * GitHubClassroom Utilities
+ * Last Updated: 1/23/2026
  */
 package edu.msoe.csse.jones;
 

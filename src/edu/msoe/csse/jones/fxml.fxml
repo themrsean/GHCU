@@ -9,14 +9,16 @@
 <?import javafx.scene.control.Menu?>
 <?import javafx.scene.control.MenuBar?>
 <?import javafx.scene.control.MenuItem?>
+<?import javafx.scene.control.ProgressBar?>
 <?import javafx.scene.control.Separator?>
 <?import javafx.scene.control.TextField?>
 <?import javafx.scene.input.KeyCodeCombination?>
 <?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.Priority?>
 <?import javafx.scene.layout.VBox?>
 <?import javafx.scene.text.Font?>
 <?import javafx.scene.control.TextArea?>
-<VBox prefHeight="450.0" prefWidth="359.0" spacing="10.0" xmlns="http://javafx.com/javafx/21"
+<VBox prefHeight="650.0" prefWidth="550.0" spacing="10.0" xmlns="http://javafx.com/javafx/21"
       xmlns:fx="http://javafx.com/fxml/1" fx:controller="edu.msoe.csse.jones.Controller">
     <MenuBar>
         <Menu mnemonicParsing="false" text="File">
@@ -35,6 +37,11 @@
             <MenuItem mnemonicParsing="false" onAction="#addToIgnored" text="Add Ignored File">
                 <accelerator>
                     <KeyCodeCombination alt="UP" code="G" control="UP" meta="DOWN" shift="UP" shortcut="UP"/>
+                </accelerator>
+            </MenuItem>
+            <MenuItem mnemonicParsing="false" onAction="#saveAssignments" text="Save Assignments">
+                <accelerator>
+                    <KeyCodeCombination alt="UP" code="S" control="UP" meta="DOWN" shift="UP" shortcut="UP"/>
                 </accelerator>
             </MenuItem>
             <MenuItem mnemonicParsing="false" onAction="#loadConfig" text="Load Configuration">
@@ -99,47 +106,63 @@
             <Insets left="10.0"/>
         </padding>
     </CheckBox>
-    <HBox alignment="CENTER_LEFT" prefHeight="40.0" prefWidth="359.0">
-        <Label text="Short Name: ">
-            <HBox.margin>
-                <Insets left="10.0"/>
-            </HBox.margin>
-        </Label>
-        <TextField fx:id="shortNameField" prefHeight="25.0" prefWidth="69.0"/>
-    </HBox>
-    <HBox alignment="CENTER_LEFT" prefHeight="40.0" prefWidth="359.0" spacing="10.0">
-        <Label text="Full Name: "/>
-        <TextField fx:id="fullNameField" prefHeight="25.0" prefWidth="256.0"/>
-        <VBox.margin>
-            <Insets/>
-        </VBox.margin>
-        <padding>
-            <Insets left="10.0"/>
-        </padding>
-    </HBox>
     <Separator prefWidth="200.0"/>
-    <Label>
-        <font>
-            <Font size="18.0" />
-        </font>
-        Files List
-        <padding>
-            <Insets left="10.0"/>
-        </padding>
-    </Label>
-    <HBox alignment="BOTTOM_RIGHT" prefHeight="155.0" prefWidth="359.0" spacing="10.0">
-        <ListView fx:id="listView" prefHeight="88.0" prefWidth="197.0">
+    <HBox>
+        <Label>
+            <font>
+                <Font size="18.0"/>
+            </font>
+            Assignments
+            <padding>
+                <Insets left="30.0"/>
+            </padding>
+        </Label>
+        <Label>
+            <font>
+                <Font size="18.0"/>
+            </font>
+            Files
+            <padding>
+                <Insets left="120.0"/>
+            </padding>
+        </Label>
+    </HBox>
+    <HBox alignment="BOTTOM_RIGHT" prefHeight="250.0" prefWidth="359.0" spacing="10.0">
+        <ListView fx:id="assignmentListView" prefHeight="88.0" prefWidth="197.0">
             <HBox.margin>
                 <Insets bottom="10.0" left="10.0"/>
             </HBox.margin>
         </ListView>
-        <VBox prefHeight="200.0" prefWidth="100.0" spacing="10.0">
-            <Button mnemonicParsing="false" onAction="#addFiles" prefHeight="25.0" prefWidth="65.0" text="Add">
+        <ListView fx:id="filesListView" prefHeight="250.0" prefWidth="197.0">
+            <HBox.margin>
+                <Insets bottom="10.0" left="10.0"/>
+            </HBox.margin>
+        </ListView>
+
+        <VBox prefHeight="200.0" prefWidth="100.0" alignment="CENTER" spacing="10.0">
+            <Button mnemonicParsing="false" onAction="#addAssignment" prefHeight="25.0" prefWidth="65.0" text="Add">
                 <VBox.margin>
                     <Insets left="10.0" top="10.0"/>
                 </VBox.margin>
             </Button>
-            <Button mnemonicParsing="false" onAction="#removeFiles" prefHeight="25.0" prefWidth="65.0" text="Remove">
+            <Button mnemonicParsing="false" onAction="#removeAssignment" prefHeight="25.0" prefWidth="65.0"
+                    text="Remove">
+                <VBox.margin>
+                    <Insets left="10.0" top="10.0"/>
+                </VBox.margin>
+            </Button>
+            <Button onAction="#editAssignment" text="Edit">
+                <VBox.margin>
+                    <Insets left="10.0" top="10.0"/>
+                </VBox.margin>
+            </Button>
+            <Separator prefWidth="200.0"/>
+            <Button onAction="#addFilesToAssignment" text="Add File">
+                <VBox.margin>
+                    <Insets left="10.0" top="10.0"/>
+                </VBox.margin>
+            </Button>
+            <Button onAction="#removeFileFromAssignment" text="Remove File">
                 <VBox.margin>
                     <Insets left="10.0" top="10.0"/>
                 </VBox.margin>
@@ -147,9 +170,21 @@
         </VBox>
     </HBox>
     <Separator prefWidth="200.0"/>
-    <TextArea minHeight="150.0" prefWidth="359.0" fx:id="feedback">
-        <VBox.margin>
-            <Insets bottom="10.0" />
-        </VBox.margin>
-    </TextArea>
+    <VBox spacing="10" VBox.vgrow="ALWAYS">
+        <ProgressBar fx:id="progressBar" prefWidth="300">
+            <VBox.margin>
+                <Insets left="10.0" bottom="10.0" top="10.0"/>
+            </VBox.margin>
+        </ProgressBar>
+        <TextArea editable="false" VBox.vgrow="ALWAYS" fx:id="feedback">
+            <VBox.margin>
+                <Insets bottom="10.0"/>
+            </VBox.margin>
+        </TextArea>
+        <Button text="Cancel" onAction="#cancelCurrentTask">
+            <VBox.margin>
+                <Insets left="10.0" bottom="10.0"/>
+            </VBox.margin>
+        </Button>
+    </VBox>
 </VBox>
