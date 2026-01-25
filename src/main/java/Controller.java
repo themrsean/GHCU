@@ -3,14 +3,15 @@
  * GitHubClassroom Utilities
  * Last Updated: 1/23/2026
  */
-package edu.msoe.csse.jones;
+package main.java;
 
-import edu.msoe.csse.jones.model.Assignment;
-import edu.msoe.csse.jones.model.Rubric;
-import edu.msoe.csse.jones.model.RubricItem;
-import edu.msoe.csse.jones.persistence.AssignmentStore;
-import edu.msoe.csse.jones.ui.AssignmentCell;
-import edu.msoe.csse.jones.ui.FilesCell;
+import javafx.scene.layout.StackPane;
+import main.java.model.Assignment;
+import main.java.ui.AssignmentCell;
+import main.java.ui.FilesCell;
+import main.java.model.Rubric;
+import main.java.model.RubricItem;
+import main.java.persistence.AssignmentStore;
 import javafx.application.Platform;
 import javafx.beans.binding.Bindings;
 import javafx.beans.binding.BooleanBinding;
@@ -41,7 +42,6 @@ import javafx.scene.input.Dragboard;
 import javafx.scene.input.TransferMode;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
-import javafx.scene.layout.Pane;
 import javafx.scene.layout.VBox;
 import javafx.scene.web.WebView;
 import javafx.stage.DirectoryChooser;
@@ -52,12 +52,16 @@ import org.commonmark.parser.Parser;
 import org.commonmark.renderer.html.HtmlRenderer;
 import org.jspecify.annotations.NonNull;
 
+import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -67,6 +71,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.ResourceBundle;
 import java.util.Scanner;
+import java.util.stream.Collectors;
 
 
 /**
@@ -74,16 +79,21 @@ import java.util.Scanner;
  */
 @SuppressWarnings("unused")
 public class Controller implements Initializable {
-    private static final Path ASSIGNMENTS_JSON =
-            Paths.get("data", "assignments.json");
+    private static final Path APP_DATA_DIR =
+            Paths.get(System.getProperty("user.home"), ".ghcu");
+    private static final Path DATA_DIR = APP_DATA_DIR.resolve("data");
     private static final String DROP_STYLE =
             "-fx-background-color: derive(-fx-accent, 70%);" +
                     "-fx-border-color: -fx-accent; -fx-border-width: 2;";
+    private static final Path ASSIGNMENTS_JSON =
+            DATA_DIR.resolve("assignments.json");
+    private final Path config =
+            DATA_DIR.resolve("config.txt");
+    private Path ignored =
+            DATA_DIR.resolve("ignored.txt");
     private final List<String> ignoredFiles = new ArrayList<>();
     private final TextInputDialog input = new TextInputDialog();
     private final ObservableList<Assignment> assignments = FXCollections.observableArrayList();
-    private final Path config = Paths.get("data", "config.txt");
-    private Path ignored = Paths.get("data", "ignored.txt");
     private final FileChooser chooser = new FileChooser();
     private Task<?> currentTask;
 
@@ -104,6 +114,7 @@ public class Controller implements Initializable {
 
     @Override
     public void initialize(URL url, ResourceBundle resourceBundle) {
+        loadResources();
         configureAssignmentListView();
         configureAssignmentSelection();
         configureAssignmentsModel();
@@ -111,6 +122,32 @@ public class Controller implements Initializable {
         configureFilesListView();
         configureIgnoredFiles();
         configureFeedbackAutoScroll();
+    }
+
+    private void loadResources() {
+        try {
+            Files.createDirectories(DATA_DIR);
+            copyIfMissing("data/assignments.json", ASSIGNMENTS_JSON);
+            copyIfMissing("data/config.txt", config);
+            copyIfMissing("data/ignored.txt", ignored);
+        } catch(IOException e) {
+            makeAlert("Initialization Error", "Cannot load config files",
+                    "Cannot load needed files. Exiting");
+            quit();
+        }
+    }
+
+    private static void copyIfMissing(String resource, Path target)
+            throws IOException {
+        if (!Files.exists(target)) {
+            try (InputStream is = ClassLoader
+                    .getSystemResourceAsStream(resource)) {
+                if (is == null) {
+                    throw new IOException("Missing resource: " + resource);
+                }
+                Files.copy(is, target);
+            }
+        }
     }
 
     private void configureAssignmentListView() {
@@ -333,7 +370,7 @@ public class Controller implements Initializable {
         if (!pathField.getText().isEmpty()) {
             Task<Void> task = new Task<>() {
                 @Override
-                protected Void call() throws IOException{
+                protected Void call() throws IOException {
                     Utilities.extractPackages(
                             Paths.get(pathField.getText()),
                             ignoredFiles
@@ -446,22 +483,28 @@ public class Controller implements Initializable {
 
     @FXML
     private void help() {
-        try {
-            StringBuilder sb = new StringBuilder();
-            List<String> list = Files.readAllLines(Paths.get("data", "README.md"));
-            for (String s : list) {
-                sb.append(s).append("\n");
+        try (InputStream is = getClass()
+                .getClassLoader()
+                .getResourceAsStream("data/README.md")) {
+            if (is == null) {
+                throw new IOException("README.md not found in resources.");
             }
-            String html = convertMarkdownToHtml(sb.toString());
-            Stage helpWindow = new Stage();
-            Pane pane = new Pane();
+            String markdown = new BufferedReader(
+                    new InputStreamReader(is, StandardCharsets.UTF_8))
+                    .lines()
+                    .collect(Collectors.joining("\n"));
+            String html = convertMarkdownToHtml(markdown);
             WebView view = new WebView();
             view.getEngine().loadContent(html);
-            pane.getChildren().add(view);
-            helpWindow.setScene(new Scene(pane));
+            Stage helpWindow = new Stage();
+            helpWindow.setScene(new Scene(new StackPane(view)));
             helpWindow.show();
         } catch (IOException e) {
-            String[] messages = {"File Not Found", "Missing manual", "Cannot load the manual file"};
+            String[] messages = {
+                    "File Not Found",
+                    "Missing manual",
+                    "Cannot load the manual file"
+            };
             makeAlert(messages);
         }
     }
@@ -832,7 +875,6 @@ public class Controller implements Initializable {
         );
 
 
-
         fileList.setOnDragOver(event -> {
             if (event.getDragboard().hasFiles()) {
                 event.acceptTransferModes(TransferMode.COPY);
@@ -940,5 +982,4 @@ public class Controller implements Initializable {
         t.setDaemon(true);
         t.start();
     }
-
 }

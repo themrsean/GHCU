@@ -2,7 +2,7 @@
  * Course: CSC-1110/1020/1120
  * GitHubClassroom Utilities
  */
-package edu.msoe.csse.jones;
+package main.java;
 
 /**
  * Launcher for GHCU

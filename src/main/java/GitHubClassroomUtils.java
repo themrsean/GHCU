@@ -3,7 +3,7 @@
  * GitHubClassroom Utilities
  * Last Updated: 1/23/2026
  */
-package edu.msoe.csse.jones;
+package main.java;
 
 import javafx.application.Application;
 import javafx.fxml.FXMLLoader;

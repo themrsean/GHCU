@@ -3,11 +3,11 @@
  * GitHubClassroom Utilities
  * Last Updated: 1/23/2026
  */
-package edu.msoe.csse.jones;
+package main.java;
 
-import edu.msoe.csse.jones.model.Assignment;
-import edu.msoe.csse.jones.model.Rubric;
-import edu.msoe.csse.jones.model.RubricItem;
+import main.java.model.Assignment;
+import main.java.model.Rubric;
+import main.java.model.RubricItem;
 
 import javax.annotation.Nonnull;
 
@@ -54,8 +54,8 @@ public class Utilities {
     /**
      * Extracts packages from GitHub repos
      *
-     * @param root the path to the repositories
-     * @param ignored  the list of files to exclude
+     * @param root    the path to the repositories
+     * @param ignored the list of files to exclude
      * @throws IOException if a read error is encountered
      */
     public static void extractPackages(Path root, List<String> ignored) throws IOException {
@@ -135,31 +135,31 @@ public class Utilities {
         }
     }
 
-    public static void generateReports(Path filePath,
+    public static void generateReports(Path submissions,
                                        Assignment assignment,
                                        boolean checkStyle)
             throws IOException {
-
-        String[] directories = filePath.toFile().list((current, name) ->
-                new File(current, name).isDirectory());
-
-        if (directories != null && directories.length > 0) {
-            Path feedback = Paths.get(filePath.toString(), "feedback");
-            if (!feedback.toFile().exists()) {
-                Files.createDirectory(feedback);
-            }
-            for (String dir : directories) {
-                File studentDir =
-                        new File(filePath + File.separator + dir + File.separator);
-                List<File> toGenerate =
-                        getFiles(assignment.getFiles(), studentDir);
-                generateReport(
-                        dir,
-                        feedback,
-                        assignment,
-                        toGenerate,
-                        checkStyle
-                );
+        File[] repos = submissions.toFile().listFiles(File::isDirectory);
+        if (repos != null) {
+            Path feedback = submissions.resolve("feedback");
+            Files.createDirectories(feedback);
+            for (File repo : repos) {
+                File[] packages = repo.listFiles(File::isDirectory);
+                if (packages != null) {
+                    for (File pkg : packages) {
+                        List<File> files =
+                                getFiles(assignment.getFiles(), pkg);
+                        if (!files.isEmpty()) {
+                            generateReport(
+                                    pkg.getName(),
+                                    feedback,
+                                    assignment,
+                                    files,
+                                    checkStyle
+                            );
+                        }
+                    }
+                }
             }
         }
     }
@@ -229,7 +229,7 @@ public class Utilities {
         ProcessBuilder pb = new ProcessBuilder(
                 "java",
                 "-jar",
-                Paths.get("bin", "checkstyle-10.23.1-all.jar").toString(),
+                Paths.get("bin", "lib/checkstyle-10.23.1-all.jar").toString(),
                 config,
                 file.getAbsolutePath());
         Process p = pb.start();

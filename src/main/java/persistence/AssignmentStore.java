@@ -3,11 +3,11 @@
  * GitHubClassroom Utilities
  * Last Updated: 1/23/2026
  */
-package edu.msoe.csse.jones.persistence;
+package main.java.persistence;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import edu.msoe.csse.jones.model.Assignment;
+import main.java.model.Assignment;
 
 import java.io.IOException;
 import java.nio.file.Path;

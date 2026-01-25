@@ -5,7 +5,7 @@
  * Name: Sean Jones
  * Last Updated:
  */
-package edu.msoe.csse.jones.ui;
+package main.java.ui;
 
 import javafx.scene.control.ListCell;
 import javafx.scene.control.TextField;
