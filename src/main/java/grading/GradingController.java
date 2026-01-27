@@ -7,6 +7,7 @@
  */
 package main.java.grading;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import javafx.animation.PauseTransition;
 import javafx.application.Platform;
 import javafx.collections.FXCollections;
@@ -14,6 +15,7 @@ import javafx.collections.ObservableList;
 import javafx.fxml.FXML;
 import javafx.fxml.FXMLLoader;
 import javafx.fxml.Initializable;
+import javafx.scene.Parent;
 import javafx.scene.Scene;
 import javafx.scene.control.ListView;
 import javafx.scene.control.SplitPane;
@@ -24,6 +26,11 @@ import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
 import javafx.stage.Stage;
 import javafx.util.Duration;
+import main.java.comments.persistence.CommentRepository;
+import main.java.comments.persistence.JsonCommentRepository;
+import main.java.comments.service.CommentInjectionService;
+import main.java.comments.ui.CommentBrowserController;
+import main.java.comments.ui.CommentBrowserFxController;
 import main.java.ui.ReportCell;
 import org.fxmisc.flowless.VirtualizedScrollPane;
 import org.fxmisc.richtext.CodeArea;
@@ -58,6 +65,11 @@ public class GradingController implements Initializable {
             new PauseTransition(AUTOSAVE_DELAY);
     private final UIState uiState =
             new UIState(GradingController.class);
+    private VirtualizedScrollPane<CodeArea> editorScroll;
+    private CommentRepository commentRepository;
+    private CommentInjectionService commentInjectionService;
+    private CodeArea editor;
+    private FindBarController findBarController;
 
     @FXML
     @SuppressWarnings("rawtypes")
@@ -67,16 +79,12 @@ public class GradingController implements Initializable {
     @FXML
     private VBox editorContainer;
 
-    private Stage stage;
     private Path currentReport;
     private double fontSize = DEFAULT_FONT_SIZE;
     private boolean programmaticEdit = false;
     private String lastSearchText = "";
     private int totalMatches = 0;
     private int currentMatchNumber = 0;
-    private VirtualizedScrollPane<CodeArea> editorScroll;
-    private CodeArea editor;
-    private FindBarController findBarController;
 
     @Override
     public void initialize(URL url, ResourceBundle resourceBundle) {
@@ -88,6 +96,7 @@ public class GradingController implements Initializable {
         configureFontHandling();
         configureAutosave();
         configureFindBar();
+        initializeCommentSystem();
     }
 
     @SuppressWarnings("unchecked")
@@ -95,6 +104,7 @@ public class GradingController implements Initializable {
         reportListView.setCellFactory(_ -> new ReportCell(stateMap));
         reportListView.setItems(reports);
     }
+
     private void configureSplitPanePersistence() {
         Platform.runLater(() -> {
             double width = uiState.loadSidebarWidth(DEFAULT_SIDEBAR_WIDTH);
@@ -154,6 +164,15 @@ public class GradingController implements Initializable {
                 }
             }
         });
+        editor.plainTextChanges().subscribe(change -> {
+            if (!programmaticEdit && currentReport != null) {
+                ReportState state = stateMap.get(currentReport);
+                if (state != null) {
+                    commentInjectionService.onTextChanged(change, state);
+                }
+            }
+        });
+
     }
 
     private void configureFontHandling() {
@@ -180,8 +199,42 @@ public class GradingController implements Initializable {
         }
     }
 
-    public void setStage(Stage stage) {
-        this.stage = stage;
+    private void initializeCommentSystem() {
+        ObjectMapper mapper = new ObjectMapper();
+        Path commentStore =
+                Path.of(System.getProperty("user.home"), ".ghcu", "comments.json");
+        commentRepository =
+                new JsonCommentRepository(commentStore, mapper);
+        commentInjectionService =
+                new CommentInjectionService();
+    }
+
+    public void openCommentBrowser() {
+        if (currentReport != null) {
+            try {
+                FXMLLoader loader = new FXMLLoader(
+                        getClass().getResource("/comments/comment_browser.fxml")
+                );
+                Parent root = loader.load();
+                CommentBrowserFxController fxController = loader.getController();
+                CommentBrowserController logicController =
+                        new CommentBrowserController(
+                                commentRepository,
+                                commentInjectionService
+                        );
+                // CRITICAL: pass the EXISTING editor and ReportState
+                ReportState state = stateMap.get(currentReport);
+                logicController.setActiveContext(editor, state);
+                fxController.setController(logicController);
+                Stage stage = new Stage();
+                stage.setTitle("Comment Browser");
+                stage.setScene(new Scene(root));
+                stage.initOwner(editor.getScene().getWindow());
+                stage.show();
+            } catch (IOException e) {
+                throw new RuntimeException("Failed to open Comment Browser", e);
+            }
+        }
     }
 
     @SuppressWarnings("unchecked")
@@ -280,6 +333,10 @@ public class GradingController implements Initializable {
                     findBarController.hide();
                     clearFindHighlighting();
                 }
+        );
+        accelerators.put(
+                new KeyCodeCombination(KeyCode.SLASH, KeyCombination.CONTROL_DOWN),
+                this::openCommentBrowser
         );
     }
 
@@ -492,6 +549,7 @@ public class GradingController implements Initializable {
             }
         }
     }
+
     private java.util.List<Integer> findAllMatches(String text, String query) {
         java.util.List<Integer> matches = new java.util.ArrayList<>();
         if (query == null || query.isEmpty()) {

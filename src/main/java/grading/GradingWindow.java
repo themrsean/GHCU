@@ -28,9 +28,7 @@ public class GradingWindow extends Application {
         Parent root;
         root = loader.load();
 
-
         GradingController controller = loader.getController();
-        controller.setStage(stage);
 
         DirectoryChooser chooser = new DirectoryChooser();
         chooser.setTitle("Select Grade Report Folder");

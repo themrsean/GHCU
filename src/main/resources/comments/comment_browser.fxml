@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+
+<?import javafx.geometry.Insets?>
+<BorderPane xmlns:fx="http://javafx.com/fxml"
+            fx:controller="main.java.comments.ui.CommentBrowserFxController"
+            prefWidth="600"
+            prefHeight="500">
+
+    <!-- Top: Search + Filters -->
+    <top>
+        <VBox spacing="8">
+            <padding>
+                <Insets top="10" right="10" bottom="10" left="10"/>
+            </padding>
+            <TextField fx:id="searchField"
+                       promptText="Search comments..." />
+
+            <HBox spacing="8">
+                <TextField fx:id="assignmentField" promptText="Assignment ID"/>
+                <TextField fx:id="rubricField" promptText="Rubric ID"/>
+                <TextField fx:id="tagField" promptText="Tag"/>
+            </HBox>
+        </VBox>
+    </top>
+
+    <!-- Center: Comment list -->
+    <center>
+        <ListView fx:id="commentList"/>
+    </center>
+
+    <!-- Bottom: Actions -->
+    <bottom>
+        <HBox spacing="10" alignment="CENTER_RIGHT">
+            <padding>
+                <Insets top="10" right="10" bottom="10" left="10"/>
+            </padding>
+            <Button text="Insert" fx:id="insertButton"/>
+            <Button text="Delete" fx:id="deleteButton"/>
+            <Separator orientation="VERTICAL"/>
+            <Button text="Import" fx:id="importButton"/>
+            <Button text="Export" fx:id="exportButton"/>
+        </HBox>
+    </bottom>
+
+</BorderPane>

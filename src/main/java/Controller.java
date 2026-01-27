@@ -7,7 +7,22 @@ package main.java;
 
 import javafx.beans.property.SimpleStringProperty;
 import javafx.fxml.FXMLLoader;
-import javafx.scene.control.*;
+import javafx.scene.control.Alert;
+import javafx.scene.control.Button;
+import javafx.scene.control.ButtonBar;
+import javafx.scene.control.ButtonType;
+import javafx.scene.control.CheckBox;
+import javafx.scene.control.Dialog;
+import javafx.scene.control.Label;
+import javafx.scene.control.ListView;
+import javafx.scene.control.ProgressBar;
+import javafx.scene.control.ScrollPane;
+import javafx.scene.control.TableColumn;
+import javafx.scene.control.TableView;
+import javafx.scene.control.TextArea;
+import javafx.scene.control.TextField;
+import javafx.scene.control.TextInputDialog;
+import javafx.scene.control.Tooltip;
 import javafx.scene.layout.StackPane;
 import javafx.stage.Screen;
 import main.java.grading.GradingController;
@@ -637,7 +652,6 @@ public class Controller implements Initializable {
                     System.out.println("CSS URL = " + css);
                     scene.getStylesheets().add(Objects.requireNonNull(css).toExternalForm());
                     stage.initOwner(pathField.getScene().getWindow());
-                    gradingController.setStage(stage);
                     gradingController.loadReportFolder(reportsDir);
                     gradingController.installAccelerators(scene);
                     stage.setOnCloseRequest(e -> gradingController.onClose());
@@ -750,9 +764,11 @@ public class Controller implements Initializable {
 
     private Assignment showAssignmentDialog(Assignment existing) {
         final double width = 400.0;
+        final double scaling = 0.9;
         Dialog<Assignment> dialog = new Dialog<>();
         dialog.setWidth(width);
-        dialog.getDialogPane().setMaxHeight(Screen.getPrimary().getVisualBounds().getHeight() * 0.9);
+        dialog.getDialogPane().setMaxHeight(Screen.getPrimary()
+                .getVisualBounds().getHeight() * scaling);
         dialog.setResizable(true);
         dialog.setTitle(existing == null ? "New Assignment" : "Edit Assignment");
         ButtonType createButton =
