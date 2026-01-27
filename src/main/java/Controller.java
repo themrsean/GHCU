@@ -5,7 +5,10 @@
  */
 package main.java;
 
+import javafx.beans.property.SimpleStringProperty;
+import javafx.fxml.FXMLLoader;
 import javafx.scene.layout.StackPane;
+import main.java.grading.GradingController;
 import main.java.model.Assignment;
 import main.java.ui.AssignmentCell;
 import main.java.ui.FilesCell;
@@ -68,6 +71,7 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.ResourceBundle;
 import java.util.Scanner;
@@ -230,6 +234,17 @@ public class Controller implements Initializable {
                         .selectedItemProperty()
                         .isNull()
         );
+        setFilesCells();
+
+
+        filesListView.setTooltip(
+                new Tooltip("Double-click to rename file")
+        );
+
+        configureFilesDragAndDrop();
+    }
+
+    private void setFilesCells() {
         filesListView.setCellFactory(list ->
                 new FilesCell(name -> {
                     Assignment a = assignmentListView.getSelectionModel().getSelectedItem();
@@ -241,13 +256,6 @@ public class Controller implements Initializable {
                             .count() > 1;
                 })
         );
-
-
-        filesListView.setTooltip(
-                new Tooltip("Double-click to rename file")
-        );
-
-        configureFilesDragAndDrop();
     }
 
     private void configureFilesDragAndDrop() {
@@ -585,7 +593,6 @@ public class Controller implements Initializable {
     private void editRubric() {
         Assignment assignment =
                 assignmentListView.getSelectionModel().getSelectedItem();
-
         if (assignment == null) {
             makeAlert("No Assignment Selected",
                     "Select an assignment",
@@ -596,26 +603,65 @@ public class Controller implements Initializable {
                     "Current total: " +
                             assignment.getRubric().getTotalPoints());
         } else {
-            TableView<RubricItem> table = new TableView<>();
-            table.setEditable(true);
-            table.setItems(assignment.getRubric().getItems());
-            TableColumn<RubricItem, String> descCol = new TableColumn<>("Item");
-            descCol.setCellValueFactory(c ->
-                    new javafx.beans.property.SimpleStringProperty(
-                            c.getValue().getDescription()));
-            descCol.setCellFactory(TextFieldTableCell.forTableColumn());
-            descCol.setOnEditCommit(e ->
-                    e.getRowValue().setDescription(e.getNewValue()));
-            TableColumn<RubricItem, Integer> ptsCol = getRubricItemIntegerTableColumn();
-            table.getColumns().add(descCol);
-            table.getColumns().add(ptsCol);
-            VBox box = getVBox(assignment, table);
+            VBox rubricEditor = buildRubricEditor(assignment.getRubric());
             Alert dialog = new Alert(Alert.AlertType.CONFIRMATION);
             dialog.setTitle("Edit Rubric");
             dialog.setHeaderText(
                     "Total Points: " + assignment.getRubric().getTotalPoints());
-            dialog.getDialogPane().setContent(box);
+            dialog.getDialogPane().setContent(rubricEditor);
             dialog.showAndWait();
+        }
+    }
+
+    @FXML
+    private void openGradingWindow() {
+        Assignment assignment =
+                assignmentListView.getSelectionModel().getSelectedItem();
+        if (assignment == null) {
+            makeAlert(
+                    "No Assignment Selected",
+                    "Select an assignment",
+                    "Grading requires an assignment"
+            );
+        } else {
+            Path reportsDir = Paths.get(
+                    pathField.getText(),
+                    "submissions",
+                    "feedback"
+            );
+            if (!Files.exists(reportsDir)) {
+                makeAlert(
+                        "No Reports Found",
+                        "Generate reports first",
+                        "No grading files exist for this assignment"
+                );
+            } else {
+                try {
+                    FXMLLoader loader = new FXMLLoader(
+                            getClass().getResource("/grading/grading.fxml")
+                    );
+                    Scene scene = new Scene(loader.load());
+                    GradingController gradingController = loader.getController();
+                    Stage stage = new Stage();
+                    stage.setTitle("Grading – " + assignment.getShortName());
+                    stage.setScene(scene);
+                    var css = getClass().getResource("/grading/editor.css");
+                    System.out.println("CSS URL = " + css);
+                    scene.getStylesheets().add(Objects.requireNonNull(css).toExternalForm());
+                    stage.initOwner(pathField.getScene().getWindow());
+                    gradingController.setStage(stage);
+                    gradingController.loadReportFolder(reportsDir);
+                    gradingController.installAccelerators(scene);
+                    stage.setOnCloseRequest(e -> gradingController.onClose());
+                    stage.show();
+                } catch (IOException e) {
+                    makeAlert(
+                            "Failed to Open Grading Window",
+                            "FXML load error",
+                            e.getMessage()
+                    );
+                }
+            }
         }
     }
 
@@ -641,7 +687,6 @@ public class Controller implements Initializable {
             currentTask.cancel();
         }
     }
-
 
     @FXML
     private void loadConfig() {
@@ -731,39 +776,9 @@ public class Controller implements Initializable {
         Rubric rubric = existing != null
                 ? existing.getRubric()
                 : new Rubric();
-        TableView<RubricItem> rubricTable = new TableView<>(rubric.getItems());
-        final int rubricTableHeight = 180;
-        rubricTable.setEditable(true);
-        rubricTable.setPrefHeight(rubricTableHeight);
-        TableColumn<RubricItem, String> descCol =
-                new TableColumn<>("Item");
-        descCol.setCellValueFactory(c ->
-                new javafx.beans.property.SimpleStringProperty(
-                        c.getValue().getDescription()
-                ));
-        descCol.setCellFactory(TextFieldTableCell.forTableColumn());
-        descCol.setOnEditCommit(e ->
-                e.getRowValue().setDescription(e.getNewValue())
-        );
-        TableColumn<RubricItem, Integer> ptsCol = getRubricItemIntegerTableColumn();
-        rubricTable.getColumns().add(ptsCol);
-        rubricTable.getColumns().add(descCol);
-        Button addRubricItem = new Button("Add Item");
-        addRubricItem.setOnAction(_ ->
-                rubric.getItems().add(new RubricItem("New Item", 0))
-        );
-        Button removeRubricItem = new Button("Remove Item");
-        removeRubricItem.setOnAction(_ -> {
-            RubricItem selected =
-                    rubricTable.getSelectionModel().getSelectedItem();
-            if (selected != null) {
-                rubric.getItems().remove(selected);
-            }
-        });
-        Label totalLabel = new Label();
-        totalLabel.textProperty().bind(
-                rubric.totalPointsProperty().asString("Total Points: %d")
-        );
+
+        VBox rubricBox = buildRubricEditor(rubric);
+
         Button addFile = new Button("Add File");
         addFile.setOnAction(_ -> {
             TextInputDialog d = new TextInputDialog();
@@ -781,14 +796,7 @@ public class Controller implements Initializable {
                 files.remove(selected);
             }
         });
-        GridPane grid = new GridPane();
-        final int spacing = 10;
-        grid.setHgap(spacing);
-        grid.setVgap(spacing);
-        grid.addRow(0, new Label("Short Name:"), shortNameField);
-        grid.addRow(1, new Label("Full Name:"), fullNameField);
-        grid.addRow(2, new Label("Files:"), fileList);
-        grid.addRow(3, addFile, removeFile);
+
         if (existing != null) {
             shortNameField.setText(existing.getShortName());
             fullNameField.setText(existing.getFullName());
@@ -812,14 +820,14 @@ public class Controller implements Initializable {
                         )
                 )
         );
-        final int boxSpacing = 5;
-        VBox rubricBox = new VBox(
-                boxSpacing,
-                new Label("Rubric"),
-                rubricTable,
-                new HBox(boxSpacing, addRubricItem, removeRubricItem),
-                totalLabel
-        );
+        GridPane grid = new GridPane();
+        final int spacing = 10;
+        grid.setHgap(spacing);
+        grid.setVgap(spacing);
+        grid.addRow(0, new Label("Short Name:"), shortNameField);
+        grid.addRow(1, new Label("Full Name:"), fullNameField);
+        grid.addRow(2, new Label("Files:"), fileList);
+        grid.addRow(3, addFile, removeFile);
         grid.add(rubricBox, 0, 4, 2, 1);
         dialog.getDialogPane().setContent(grid);
         dialog.setResultConverter(button -> {
@@ -859,22 +867,63 @@ public class Controller implements Initializable {
         return ptsCol;
     }
 
+    @SuppressWarnings("unchecked")
+    private VBox buildRubricEditor(Rubric rubric) {
+        TableView<RubricItem> table = new TableView<>(rubric.getItems());
+        table.setEditable(true);
+        TableColumn<RubricItem, String> descCol =
+                new TableColumn<>("Item");
+        descCol.setCellValueFactory(c ->
+                new SimpleStringProperty(c.getValue().getDescription()));
+        descCol.setCellFactory(TextFieldTableCell.forTableColumn());
+        descCol.setOnEditCommit(e ->
+                e.getRowValue().setDescription(e.getNewValue()));
+        TableColumn<RubricItem, Integer> ptsCol =
+                getRubricItemIntegerTableColumn();
+        table.getColumns().addAll(descCol, ptsCol);
+
+        Button addItem = new Button("Add Item");
+        addItem.setOnAction(_ ->
+                rubric.getItems().add(new RubricItem("New Item", 0)));
+
+        Button removeItem = new Button("Remove Item");
+        removeItem.setOnAction(_ -> {
+            RubricItem selected =
+                    table.getSelectionModel().getSelectedItem();
+            if (selected != null) {
+                rubric.getItems().remove(selected);
+            }
+        });
+
+        Label totalLabel = new Label();
+        totalLabel.textProperty().bind(
+                rubric.totalPointsProperty().asString("Total Points: %d")
+        );
+        final int boxSpacing = 5;
+        return new VBox(
+                boxSpacing,
+                new Label("Rubric"),
+                table,
+                new HBox(boxSpacing, addItem, removeItem),
+                totalLabel
+        );
+    }
+
     private @NonNull ListView<String> getListView(ObservableList<String> files) {
         ListView<String> fileList = new ListView<>(files);
         fileList.setEditable(true);
-        filesListView.setCellFactory(list ->
-                new FilesCell(name -> {
-                    Assignment a = assignmentListView.getSelectionModel().getSelectedItem();
-                    if (a == null) {
-                        return false;
-                    }
-                    return a.getFiles().stream()
-                            .filter(name::equals)
-                            .count() > 1;
-                })
+        setFilesCells();
+        configureFileDragAndDrop(fileList, files);
+        fileList.setPlaceholder(
+                new Label("Drag files here or click Add File")
         );
+        return fileList;
+    }
 
-
+    private void configureFileDragAndDrop(
+            ListView<String> fileList,
+            ObservableList<String> files
+    ) {
         fileList.setOnDragOver(event -> {
             if (event.getDragboard().hasFiles()) {
                 event.acceptTransferModes(TransferMode.COPY);
@@ -882,16 +931,13 @@ public class Controller implements Initializable {
             }
             event.consume();
         });
-
         fileList.setOnDragExited(event -> {
             fileList.setStyle("");
             event.consume();
         });
-
         fileList.setOnDragDropped(event -> {
             Dragboard db = event.getDragboard();
             boolean success = false;
-
             if (db.hasFiles()) {
                 for (File file : db.getFiles()) {
                     String name = file.getName();
@@ -901,41 +947,10 @@ public class Controller implements Initializable {
                 }
                 success = true;
             }
-
             fileList.setStyle("");
             event.setDropCompleted(success);
             event.consume();
         });
-
-        fileList.setPlaceholder(
-                new Label("Drag files here or click Add File")
-        );
-
-        fileList.setOnDragOver(event -> {
-            if (event.getDragboard().hasFiles()) {
-                event.acceptTransferModes(TransferMode.COPY);
-            }
-            event.consume();
-        });
-
-        fileList.setOnDragDropped(event -> {
-            Dragboard db = event.getDragboard();
-            boolean success = false;
-
-            if (db.hasFiles()) {
-                for (File file : db.getFiles()) {
-                    String name = file.getName();
-                    if (!files.contains(name)) {
-                        files.add(name);
-                    }
-                }
-                success = true;
-            }
-
-            event.setDropCompleted(success);
-            event.consume();
-        });
-        return fileList;
     }
 
     private boolean hasDuplicates(ObservableList<String> items) {

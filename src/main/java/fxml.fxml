@@ -34,9 +34,14 @@
             </MenuItem>
         </Menu>
         <Menu mnemonicParsing="false" text="Edit">
-            <MenuItem mnemonicParsing="false" onAction="#addToIgnored" text="Add Ignored File">
+            <MenuItem text="Grade Reports" onAction="#openGradingWindow">
                 <accelerator>
                     <KeyCodeCombination alt="UP" code="G" control="UP" meta="DOWN" shift="UP" shortcut="UP"/>
+                </accelerator>
+            </MenuItem>
+            <MenuItem mnemonicParsing="false" onAction="#addToIgnored" text="Add Ignored File">
+                <accelerator>
+                    <KeyCodeCombination alt="UP" code="I" control="UP" meta="DOWN" shift="UP" shortcut="UP"/>
                 </accelerator>
             </MenuItem>
             <MenuItem mnemonicParsing="false" onAction="#saveAssignments" text="Save Assignments">

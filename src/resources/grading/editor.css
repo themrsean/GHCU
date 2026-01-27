@@ -1,0 +1,37 @@
+.styled-text-area .text {
+    -fx-fill: black;
+}
+
+/* ---------- Java syntax ---------- */
+
+.styled-text-area .text.keyword {
+    -fx-fill: #0000cc;
+    -fx-font-weight: bold;
+}
+
+.styled-text-area .text.string {
+    -fx-fill: #008000;
+}
+
+.styled-text-area .text.comment {
+    -fx-fill: #999999;
+    -fx-font-style: italic;
+}
+
+.styled-text-area .text.number {
+    -fx-fill: #660099;
+}
+
+.styled-text-area .text.annotation {
+    -fx-fill: #808000;
+}
+
+/* ---------- Find highlighting ---------- */
+
+.styled-text-area .text.find-match {
+    -rtfx-background-color: #ffe58a;
+}
+
+.styled-text-area .text.find-current {
+    -rtfx-background-color: #ff9f1a;
+}

@@ -24,21 +24,17 @@ public final class ReportCell extends ListCell<Path> {
     @Override
     protected void updateItem(Path item, boolean empty) {
         super.updateItem(item, empty);
-
         if (empty || item == null) {
             setText(null);
             setGraphic(null);
-            return;
+        } else {
+            ReportState state = stateMap.get(item);
+            boolean dirty = state != null && state.isDirty();
+            String name = item.getFileName().toString();
+            setText(dirty ? "● " + name : name);
+            setStyle(dirty
+                    ? "-fx-font-weight: bold;"
+                    : "");
         }
-
-        ReportState state = stateMap.get(item);
-        boolean dirty = state != null && state.dirty;
-
-        String name = item.getFileName().toString();
-        setText(dirty ? "● " + name : name);
-
-        setStyle(dirty
-                ? "-fx-font-weight: bold;"
-                : "");
     }
 }

@@ -76,6 +76,11 @@ public final class UIState {
     }
 
     private String scrollKey(Path report) {
-        return "scroll." + report.toAbsolutePath();
+        return "scroll." + keyFor(report);
     }
+
+    private String keyFor(Path path) {
+        return Integer.toHexString(path.toAbsolutePath().toString().hashCode());
+    }
+
 }

@@ -7,33 +7,62 @@
  */
 package main.java.grading;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import main.java.comments.domain.InjectedComment;
+
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Deque;
+import java.util.List;
+import java.util.Objects;
 
 public final class ReportState {
-    private static final int MAX_HISTORY = 100;
-    /* ---------- Document State ---------- */
-
-    private String text = "";
-    private boolean dirty = false;
-
-    private int caretPosition = 0;
-    private double scrollLocation = 0.0;
-
     /* ---------- Undo / Redo ---------- */
+    private static final int MAX_HISTORY = 100;
+    @JsonIgnore private final Deque<String> undoStack;
+    @JsonIgnore private final Deque<String> redoStack;
+    /* ---------- Document State ---------- */
+    private String text;
+    private boolean dirty;
+    private int caretPosition;
+    private double scrollLocation;
+    private List<InjectedComment> injectedComments;
 
-    private final Deque<String> undoStack = new ArrayDeque<>();
-    private final Deque<String> redoStack = new ArrayDeque<>();
-
-    /* ---------- Lifecycle ---------- */
-
-    public ReportState() {}
+    public ReportState() {
+        this.dirty = false;
+        this.caretPosition = 0;
+        this.scrollLocation = 0.0;
+        this.undoStack = new ArrayDeque<>();
+        this.redoStack = new ArrayDeque<>();
+        injectedComments = new ArrayList<>();
+        this.text = "";
+    }
 
     public ReportState(String initialText) {
+        this();
         this.text = initialText;
     }
 
-    /* ---------- State Updates ---------- */
+    @JsonCreator
+    public ReportState(
+            @JsonProperty("text") String text,
+            @JsonProperty("dirty") boolean dirty,
+            @JsonProperty("caretPosition") int caretPosition,
+            @JsonProperty("scrollLocation") double scrollLocation,
+            @JsonProperty("injectedComments") List<InjectedComment> injectedComments
+    ) {
+        this.undoStack = new ArrayDeque<>();
+        this.redoStack = new ArrayDeque<>();
+        this.text = Objects.requireNonNullElse(text, "");
+        this.dirty = dirty;
+        this.caretPosition = Math.max(0, caretPosition);
+        this.scrollLocation = scrollLocation;
+        this.injectedComments = List.copyOf(
+                injectedComments == null ? List.of() : injectedComments
+        );
+    }
 
     public void reset(String text) {
         this.text = text;
@@ -59,8 +88,6 @@ public final class ReportState {
         this.scrollLocation = scrollLocation;
     }
 
-    /* ---------- Undo / Redo ---------- */
-
     public boolean canUndo() {
         return !undoStack.isEmpty();
     }
@@ -70,8 +97,9 @@ public final class ReportState {
     }
 
     public String undo() {
-        if (!canUndo()) return text;
-
+        if (!canUndo()) {
+            return text;
+        }
         redoStack.push(text);
         text = undoStack.pop();
         dirty = true;
@@ -79,8 +107,9 @@ public final class ReportState {
     }
 
     public String redo() {
-        if (!canRedo()) return text;
-
+        if (!canRedo()) {
+            return text;
+        }
         undoStack.push(text);
         text = redoStack.pop();
         dirty = true;
@@ -93,8 +122,6 @@ public final class ReportState {
         }
         undoStack.push(snapshot);
     }
-
-    /* ---------- Persistence Helpers ---------- */
 
     public boolean isDirty() {
         return dirty;
@@ -130,5 +157,28 @@ public final class ReportState {
 
     public void setScrollLocation(double scrollLocation) {
         this.scrollLocation = scrollLocation;
+    }
+
+    public List<InjectedComment> getInjectedComments() {
+        return injectedComments;
+    }
+
+    public void addInjectedComment(InjectedComment comment) {
+        Objects.requireNonNull(comment, "comment");
+        List<InjectedComment> next = new ArrayList<>(injectedComments);
+        next.add(comment);
+        injectedComments = List.copyOf(next);
+    }
+
+    public void removeInjectedComment(InjectedComment comment) {
+        Objects.requireNonNull(comment, "comment");
+        List<InjectedComment> next = new ArrayList<>(injectedComments);
+        next.remove(comment);
+        injectedComments = List.copyOf(next);
+    }
+
+    public void replaceInjectedComments(List<InjectedComment> comments) {
+        Objects.requireNonNull(comments, "comments");
+        injectedComments = List.copyOf(comments);
     }
 }

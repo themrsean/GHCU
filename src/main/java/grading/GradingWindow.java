@@ -16,19 +16,18 @@ import javafx.stage.Stage;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.Objects;
 
 public class GradingWindow extends Application {
     private final UIState uiState =
             new UIState(GradingWindow.class);
 
-    static void main() {
-        Application.launch();
-    }
-
     @Override
     public void start(Stage stage) throws IOException {
-        FXMLLoader loader = new FXMLLoader(getClass().getResource("grading.fxml"));
-        Parent root = loader.load();
+        FXMLLoader loader = new FXMLLoader(getClass().getResource("/grading/grading.fxml"));
+        Parent root;
+        root = loader.load();
+
 
         GradingController controller = loader.getController();
         controller.setStage(stage);
@@ -41,13 +40,20 @@ public class GradingWindow extends Application {
             controller.loadReportFolder(folder.toPath());
         }
         Scene scene = new Scene(root);
+        var css = getClass().getResource("/grading/editor.css");
+        System.out.println("CSS URL = " + css);
+        scene.getStylesheets().add(Objects.requireNonNull(css).toExternalForm());
         controller.installAccelerators(scene);
+        stage.setOnCloseRequest(_ -> controller.onClose());
+
         stage.setScene(scene);
         stage.setTitle("Report Grading");
         stage.show();
-        uiState.restoreWindow(stage, 900, 600);
+        final int width = 900;
+        final int height = 600;
+        uiState.restoreWindow(stage, width, height);
 
-        stage.setOnHidden(e ->
+        stage.setOnHidden(_ ->
                 uiState.saveWindow(stage)
         );
 
