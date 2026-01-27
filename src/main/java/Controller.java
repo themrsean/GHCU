@@ -9,6 +9,7 @@ import javafx.beans.property.SimpleStringProperty;
 import javafx.fxml.FXMLLoader;
 import javafx.scene.control.*;
 import javafx.scene.layout.StackPane;
+import javafx.stage.Screen;
 import main.java.grading.GradingController;
 import main.java.model.Assignment;
 import main.java.ui.AssignmentCell;
@@ -751,6 +752,7 @@ public class Controller implements Initializable {
         final double width = 400.0;
         Dialog<Assignment> dialog = new Dialog<>();
         dialog.setWidth(width);
+        dialog.getDialogPane().setMaxHeight(Screen.getPrimary().getVisualBounds().getHeight() * 0.9);
         dialog.setResizable(true);
         dialog.setTitle(existing == null ? "New Assignment" : "Edit Assignment");
         ButtonType createButton =
