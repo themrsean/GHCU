@@ -7,6 +7,7 @@ package main.java;
 
 import javafx.beans.property.SimpleStringProperty;
 import javafx.fxml.FXMLLoader;
+import javafx.scene.control.*;
 import javafx.scene.layout.StackPane;
 import main.java.grading.GradingController;
 import main.java.model.Assignment;
@@ -25,21 +26,6 @@ import javafx.concurrent.Task;
 import javafx.fxml.FXML;
 import javafx.fxml.Initializable;
 import javafx.scene.Scene;
-import javafx.scene.control.Alert;
-import javafx.scene.control.Button;
-import javafx.scene.control.ButtonBar;
-import javafx.scene.control.ButtonType;
-import javafx.scene.control.CheckBox;
-import javafx.scene.control.Dialog;
-import javafx.scene.control.Label;
-import javafx.scene.control.ListView;
-import javafx.scene.control.ProgressBar;
-import javafx.scene.control.TableColumn;
-import javafx.scene.control.TableView;
-import javafx.scene.control.TextArea;
-import javafx.scene.control.TextField;
-import javafx.scene.control.TextInputDialog;
-import javafx.scene.control.Tooltip;
 import javafx.scene.control.cell.TextFieldTableCell;
 import javafx.scene.input.Dragboard;
 import javafx.scene.input.TransferMode;
@@ -141,11 +127,12 @@ public class Controller implements Initializable {
         }
     }
 
-    private static void copyIfMissing(String resource, Path target)
+    private void copyIfMissing(String resource, Path target)
             throws IOException {
         if (!Files.exists(target)) {
-            try (InputStream is = ClassLoader
-                    .getSystemResourceAsStream(resource)) {
+            try (InputStream is = Controller.class
+                    .getClassLoader()
+                    .getResourceAsStream(resource)) {
                 if (is == null) {
                     throw new IOException("Missing resource: " + resource);
                 }
@@ -764,6 +751,7 @@ public class Controller implements Initializable {
         final double width = 400.0;
         Dialog<Assignment> dialog = new Dialog<>();
         dialog.setWidth(width);
+        dialog.setResizable(true);
         dialog.setTitle(existing == null ? "New Assignment" : "Edit Assignment");
         ButtonType createButton =
                 new ButtonType("Create", ButtonBar.ButtonData.OK_DONE);
@@ -829,7 +817,10 @@ public class Controller implements Initializable {
         grid.addRow(2, new Label("Files:"), fileList);
         grid.addRow(3, addFile, removeFile);
         grid.add(rubricBox, 0, 4, 2, 1);
-        dialog.getDialogPane().setContent(grid);
+        ScrollPane scroll = new ScrollPane(grid);
+        scroll.setFitToWidth(true);
+        scroll.setFitToHeight(true);
+        dialog.getDialogPane().setContent(scroll);
         dialog.setResultConverter(button -> {
             if (button == createButton) {
                 Assignment target = existing != null ? existing :
