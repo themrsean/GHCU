@@ -5,8 +5,10 @@
  * Name: Sean Jones
  * Last Updated:
  */
-package main.java.grading;
+package grading.ui;
 
+import grading.controller.GradingController;
+import grading.model.UIState;
 import javafx.application.Application;
 import javafx.fxml.FXMLLoader;
 import javafx.scene.Parent;

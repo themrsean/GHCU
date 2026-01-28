@@ -5,12 +5,12 @@
  * Name: Sean Jones
  * Last Updated:
  */
-package main.java.grading;
+package grading.model;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import main.java.comments.domain.InjectedComment;
+import comments.domain.InjectedComment;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;

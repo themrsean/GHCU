@@ -5,18 +5,25 @@
  * Name: Sean Jones
  * Last Updated:
  */
-package main.java.grading;
+package grading.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import grading.model.ReportRepoIndex;
+import grading.model.ReportState;
+import grading.model.UIState;
+import grading.service.JavaSyntaxHighlighter;
 import javafx.animation.PauseTransition;
 import javafx.application.Platform;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
+import javafx.concurrent.Task;
 import javafx.fxml.FXML;
 import javafx.fxml.FXMLLoader;
 import javafx.fxml.Initializable;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
+import javafx.scene.control.Alert;
+import javafx.scene.control.ButtonType;
 import javafx.scene.control.ListView;
 import javafx.scene.control.SplitPane;
 import javafx.scene.input.KeyCode;
@@ -26,12 +33,13 @@ import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
 import javafx.stage.Stage;
 import javafx.util.Duration;
-import main.java.comments.persistence.CommentRepository;
-import main.java.comments.persistence.JsonCommentRepository;
-import main.java.comments.service.CommentInjectionService;
-import main.java.comments.ui.CommentBrowserController;
-import main.java.comments.ui.CommentBrowserFxController;
-import main.java.ui.ReportCell;
+import mainui.service.Utilities;
+import comments.persistence.CommentRepository;
+import comments.persistence.JsonCommentRepository;
+import comments.service.CommentInjectionService;
+import comments.ui.CommentBrowserController;
+import comments.ui.CommentBrowserFxController;
+import grading.ui.ReportCell;
 import org.fxmisc.flowless.VirtualizedScrollPane;
 import org.fxmisc.richtext.CodeArea;
 import org.fxmisc.richtext.model.StyleSpans;
@@ -42,11 +50,13 @@ import java.io.UncheckedIOException;
 import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.ResourceBundle;
 import java.util.stream.Stream;
 
@@ -70,6 +80,7 @@ public class GradingController implements Initializable {
     private CommentInjectionService commentInjectionService;
     private CodeArea editor;
     private FindBarController findBarController;
+    private ReportRepoIndex reportRepoIndex;
 
     @FXML
     @SuppressWarnings("rawtypes")
@@ -237,6 +248,10 @@ public class GradingController implements Initializable {
         }
     }
 
+    public void setReportRepoIndex(ReportRepoIndex reportRepoIndex) {
+        this.reportRepoIndex = reportRepoIndex;
+    }
+
     @SuppressWarnings("unchecked")
     public void loadReportFolder(Path folder) throws IOException {
         reports.clear();
@@ -337,6 +352,14 @@ public class GradingController implements Initializable {
         accelerators.put(
                 new KeyCodeCombination(KeyCode.SLASH, KeyCombination.CONTROL_DOWN),
                 this::openCommentBrowser
+        );
+        accelerators.put(
+                new KeyCodeCombination(KeyCode.D, KeyCombination.CONTROL_DOWN),
+                this::deployAndPublishCurrentReport
+        );
+        accelerators.put(
+                new KeyCodeCombination(KeyCode.D, KeyCombination.CONTROL_DOWN, KeyCombination.SHIFT_DOWN),
+                this::publishAllTouchedRepos
         );
     }
 
@@ -496,6 +519,213 @@ public class GradingController implements Initializable {
                 }
             }
         }
+    }
+
+    private void deployCurrentReportToRepo() {
+        // Ensure latest edits are saved first
+        autosaveCurrentReport();
+
+        if (currentReport == null) {
+            showInfo("Deploy Report", "No report selected.");
+            return;
+        }
+        if (reportRepoIndex == null) {
+            showError("Deploy Report",
+                    "Missing report mapping",
+                    "No ReportRepoIndex was provided to GradingController.");
+            return;
+        }
+
+        Optional<Path> repoOpt = reportRepoIndex.findRepoForReport(currentReport);
+        if (repoOpt.isEmpty()) {
+            showError("Deploy Report",
+                    "Repository not found for report",
+                    "No repository mapping exists for:\n" + currentReport);
+            return;
+        }
+
+        Path repoRoot = repoOpt.get();
+
+        // Destination path inside the repo
+        // (choose whatever convention you want)
+        Path destDir = repoRoot.resolve("feedback");
+        Path destFile = destDir.resolve(currentReport.getFileName());
+
+        try {
+            Files.createDirectories(destDir);
+
+            // confirm overwrite if exists
+            if (Files.exists(destFile)) {
+                Alert confirm = new Alert(Alert.AlertType.CONFIRMATION);
+                confirm.setTitle("Overwrite feedback?");
+                confirm.setHeaderText("Feedback report already exists in repository.");
+                confirm.setContentText(destFile.toString());
+                Optional<ButtonType> result = confirm.showAndWait();
+                if (result.isEmpty() || result.get() != ButtonType.OK) {
+                    return;
+                }
+            }
+
+            Files.copy(currentReport, destFile, StandardCopyOption.REPLACE_EXISTING);
+
+            showInfo("Deploy Report",
+                    "Copied report into repo:\n" + destFile);
+
+        } catch (IOException e) {
+            showError("Deploy Report",
+                    "Copy failed",
+                    e.getMessage());
+        }
+    }
+
+    private void deployAndPublishCurrentReport() {
+        autosaveCurrentReport();
+
+        if (currentReport == null) {
+            showInfo("Publish", "No report selected.");
+            return;
+        }
+        if (reportRepoIndex == null) {
+            showError("Publish", "Missing mapping", "No ReportRepoIndex provided.");
+            return;
+        }
+
+        var repoOpt = reportRepoIndex.findRepoForReport(currentReport);
+        if (repoOpt.isEmpty()) {
+            showError("Publish", "Missing mapping",
+                    "No repository mapping exists for:\n" + currentReport);
+            return;
+        }
+
+        Path repoRoot = repoOpt.get();
+        Path destDir = repoRoot.resolve("feedback");
+        Path destFile = destDir.resolve(currentReport.getFileName());
+
+        // Run publish off UI thread
+        Task<Void> task = new Task<>() {
+            @Override
+            protected Void call() throws Exception {
+                Files.createDirectories(destDir);
+                Files.copy(currentReport, destFile, StandardCopyOption.REPLACE_EXISTING);
+
+                // Mark touched
+                reportRepoIndex.markRepoTouched(repoRoot);
+
+                // Publish to remote
+                Utilities.publishFeedbackReport(repoRoot, destFile);
+
+                return null;
+            }
+        };
+
+        task.setOnSucceeded(e ->
+                showInfo("Publish", "Report deployed + pushed successfully.")
+        );
+        task.setOnFailed(e ->
+                showError("Publish", "Failed", task.getException().getMessage())
+        );
+
+        Thread t = new Thread(task, "Publish-Feedback");
+        t.setDaemon(true);
+        t.start();
+    }
+
+    private void publishAllTouchedRepos() {
+        if (reportRepoIndex == null) {
+            showError("Publish All", "Missing mapping", "No ReportRepoIndex provided.");
+            return;
+        }
+
+        var repos = reportRepoIndex.touchedReposSnapshot();
+        if (repos.isEmpty()) {
+            showInfo("Publish All", "No repositories have deployed reports yet.");
+            return;
+        }
+
+        Task<Void> task = new Task<>() {
+            @Override
+            protected Void call() throws Exception {
+                for (Path repo : repos) {
+                    // publish all reports in repo/feedback
+                    Path feedbackDir = repo.resolve("feedback");
+                    if (!Files.isDirectory(feedbackDir)) {
+                        continue;
+                    }
+                    try (var stream = Files.list(feedbackDir)) {
+                        for (Path f : stream.toList()) {
+                            if (Files.isRegularFile(f) && f.toString().endsWith(".html")) {
+                                Utilities.publishFeedbackReport(repo, f);
+                            }
+                        }
+                    }
+                }
+                return null;
+            }
+        };
+
+        task.setOnSucceeded(e ->
+                showInfo("Publish All", "Pulled + pushed feedback for all touched repositories.")
+        );
+        task.setOnFailed(e ->
+                showError("Publish All", "Failed", task.getException().getMessage())
+        );
+
+        Thread t = new Thread(task, "Publish-All-Feedback");
+        t.setDaemon(true);
+        t.start();
+    }
+
+    private void showInfo(String title, String msg) {
+        Alert a = new Alert(Alert.AlertType.INFORMATION);
+        a.setTitle(title);
+        a.setHeaderText(null);
+        a.setContentText(msg);
+        a.initOwner(editor.getScene().getWindow());
+        a.showAndWait();
+    }
+
+    private void showError(String title, String header, String msg) {
+        Alert a = new Alert(Alert.AlertType.ERROR);
+        a.setTitle(title);
+        a.setHeaderText(header);
+        a.setContentText(msg);
+        a.initOwner(editor.getScene().getWindow());
+        a.showAndWait();
+    }
+
+    private void deployAllReportsToRepos() {
+        autosaveCurrentReport();
+
+        if (reportRepoIndex == null) {
+            showError("Deploy All Reports",
+                    "Missing report mapping",
+                    "No ReportRepoIndex was provided to GradingController.");
+            return;
+        }
+
+        int copied = 0;
+        int missing = 0;
+
+        for (Path report : reports) {
+            Optional<Path> repoOpt = reportRepoIndex.findRepoForReport(report);
+            if (repoOpt.isEmpty()) {
+                missing++;
+                continue;
+            }
+            Path repoRoot = repoOpt.get();
+            Path destDir = repoRoot.resolve("feedback");
+            Path destFile = destDir.resolve(report.getFileName());
+            try {
+                Files.createDirectories(destDir);
+                Files.copy(report, destFile, StandardCopyOption.REPLACE_EXISTING);
+                copied++;
+            } catch (IOException ignored) {
+                // ignore or count failures
+            }
+        }
+
+        showInfo("Deploy All Reports",
+                "Copied: " + copied + "\nMissing mapping: " + missing);
     }
 
     void findNext(String query) {

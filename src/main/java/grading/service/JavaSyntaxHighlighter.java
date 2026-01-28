@@ -5,7 +5,7 @@
  * Name: Sean Jones
  * Last Updated:
  */
-package main.java.grading;
+package grading.service;
 
 import org.fxmisc.richtext.model.StyleSpans;
 import org.fxmisc.richtext.model.StyleSpansBuilder;

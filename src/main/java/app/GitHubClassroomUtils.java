@@ -3,7 +3,7 @@
  * GitHubClassroom Utilities
  * Last Updated: 1/23/2026
  */
-package main.java;
+package app;
 
 import javafx.application.Application;
 import javafx.fxml.FXMLLoader;
@@ -23,7 +23,7 @@ public class GitHubClassroomUtils extends Application {
 
     public void start(Stage stage)throws IOException {
         FXMLLoader loader = new FXMLLoader();
-        loader.setLocation(getClass().getResource("fxml.fxml"));
+        loader.setLocation(getClass().getResource("/mainui/main.fxml"));
         Parent root = loader.load();
         stage.setTitle("GitHub Classroom Utilities");
         stage.setScene(new Scene(root));

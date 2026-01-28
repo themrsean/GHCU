@@ -1,6 +1,6 @@
-package main.java.comments.persistence;
+package comments.persistence;
 
-import main.java.comments.domain.CommentTemplate;
+import comments.domain.CommentTemplate;
 
 import java.nio.file.Path;
 import java.util.List;

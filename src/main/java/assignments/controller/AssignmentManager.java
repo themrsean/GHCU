@@ -3,7 +3,9 @@
  * GitHubClassroom Utilities
  * Last Updated: 1/23/2026
  */
-package main.java.model;
+package assignments.controller;
+
+import assignments.model.Assignment;
 
 import java.util.ArrayList;
 import java.util.List;

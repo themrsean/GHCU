@@ -5,7 +5,7 @@
  * Name: Sean Jones
  * Last Updated:
  */
-package main.java.grading;
+package grading.controller;
 
 import javafx.fxml.FXML;
 import javafx.scene.control.Label;

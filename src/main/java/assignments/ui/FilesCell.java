@@ -5,7 +5,7 @@
  * Name: Sean Jones
  * Last Updated:
  */
-package main.java.ui;
+package assignments.ui;
 
 import javafx.scene.control.ListCell;
 import javafx.scene.control.TextField;

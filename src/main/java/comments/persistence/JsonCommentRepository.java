@@ -5,11 +5,11 @@
  * Name: Sean Jones
  * Last Updated:
  */
-package main.java.comments.persistence;
+package comments.persistence;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import main.java.comments.domain.CommentTemplate;
+import comments.domain.CommentTemplate;
 
 import java.io.IOException;
 import java.nio.file.Files;

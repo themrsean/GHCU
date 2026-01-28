@@ -19,7 +19,7 @@
 <?import javafx.scene.text.Font?>
 <?import javafx.scene.control.TextArea?>
 <VBox prefHeight="650.0" prefWidth="550.0" spacing="10.0" xmlns="http://javafx.com/javafx/21"
-      xmlns:fx="http://javafx.com/fxml/1" fx:controller="main.java.Controller">
+      xmlns:fx="http://javafx.com/fxml/1" fx:controller="mainui.controller.MainController">
     <MenuBar>
         <Menu mnemonicParsing="false" text="File">
             <MenuItem mnemonicParsing="false" onAction="#open" text="Open">

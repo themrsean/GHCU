@@ -5,12 +5,12 @@
  * Name: Sean Jones
  * Last Updated:
  */
-package main.java.comments.ui;
+package comments.ui;
 
-import main.java.comments.domain.CommentTemplate;
-import main.java.comments.persistence.CommentRepository;
-import main.java.comments.service.CommentInjectionService;
-import main.java.grading.ReportState;
+import comments.domain.CommentTemplate;
+import comments.persistence.CommentRepository;
+import comments.service.CommentInjectionService;
+import grading.model.ReportState;
 import org.fxmisc.richtext.CodeArea;
 
 import java.nio.file.Path;

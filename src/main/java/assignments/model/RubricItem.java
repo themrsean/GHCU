@@ -3,7 +3,7 @@
  * GitHubClassroom Utilities
  * Last Updated: 1/23/2026
  */
-package main.java.model;
+package assignments.model;
 
 import javafx.beans.property.IntegerProperty;
 import javafx.beans.property.SimpleIntegerProperty;

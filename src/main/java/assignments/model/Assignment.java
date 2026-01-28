@@ -3,7 +3,7 @@
  * GitHubClassroom Utilities
  * Last Updated: 1/23/2026
  */
-package main.java.model;
+package assignments.model;
 
 import javafx.beans.property.SimpleStringProperty;
 import javafx.beans.property.StringProperty;
@@ -16,7 +16,7 @@ public class Assignment {
     private final StringProperty shortName = new SimpleStringProperty();
     private final StringProperty fullName = new SimpleStringProperty();
     private final ObservableList<String> files;
-    private Rubric rubric;
+    private assignments.model.Rubric rubric;
 
     public Assignment() {
         this.files = FXCollections.observableArrayList();

@@ -3,7 +3,7 @@
  * GitHubClassroom Utilities
  * Last Updated: 1/23/2026
  */
-package main.java.model;
+package assignments.model;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;

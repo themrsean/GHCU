@@ -5,7 +5,7 @@
  * Name: Sean Jones
  * Last Updated:
  */
-package main.java.comments.domain;
+package comments.domain;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;

@@ -3,11 +3,11 @@
  * GitHubClassroom Utilities
  * Last Updated: 1/23/2026
  */
-package main.java.persistence;
+package assignments.persistence;
 
+import assignments.model.Assignment;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import main.java.model.Assignment;
 
 import java.io.IOException;
 import java.nio.file.Path;

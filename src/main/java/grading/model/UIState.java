@@ -5,7 +5,7 @@
  * Name: Sean Jones
  * Last Updated:
  */
-package main.java.grading;
+package grading.model;
 
 import javafx.stage.Stage;
 

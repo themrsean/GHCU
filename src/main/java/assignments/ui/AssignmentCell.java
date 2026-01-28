@@ -5,9 +5,9 @@
  * Name: Sean Jones
  * Last Updated:
  */
-package main.java.ui;
+package assignments.ui;
 
-import main.java.model.Assignment;
+import assignments.model.Assignment;
 import javafx.application.Platform;
 import javafx.scene.control.ListCell;
 import javafx.scene.control.TextField;

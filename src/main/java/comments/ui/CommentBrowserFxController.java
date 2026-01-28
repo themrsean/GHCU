@@ -5,13 +5,16 @@
  * Name: Sean Jones
  * Last Updated:
  */
-package main.java.comments.ui;
+package comments.ui;
 
 import javafx.collections.FXCollections;
 import javafx.fxml.FXML;
-import javafx.scene.control.*;
+import javafx.scene.control.Button;
+import javafx.scene.control.ListCell;
+import javafx.scene.control.ListView;
+import javafx.scene.control.TextField;
 import javafx.stage.FileChooser;
-import main.java.comments.domain.CommentTemplate;
+import comments.domain.CommentTemplate;
 
 import java.io.File;
 import java.util.List;

@@ -3,17 +3,16 @@
  * GitHubClassroom Utilities
  * Last Updated: 1/23/2026
  */
-package main.java;
+package mainui.service;
 
-import main.java.model.Assignment;
-import main.java.model.Rubric;
-import main.java.model.RubricItem;
+import assignments.model.Assignment;
+import assignments.model.Rubric;
+import assignments.model.RubricItem;
 
 import javax.annotation.Nonnull;
 
 import java.io.BufferedReader;
 import java.io.File;
-import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
@@ -26,7 +25,9 @@ import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Scanner;
 
@@ -135,32 +136,67 @@ public class Utilities {
         }
     }
 
-    public static void generateReports(Path submissions,
-                                       Assignment assignment,
-                                       boolean checkStyle)
+    public static Map<Path, Path> generateReports(Path submissions,
+                                                  Assignment assignment,
+                                                  boolean checkStyle)
             throws IOException {
+        Map<Path, Path> reportToRepo = new HashMap<>();
         File[] repos = submissions.toFile().listFiles(File::isDirectory);
         if (repos != null) {
             Path feedback = submissions.resolve("feedback");
             Files.createDirectories(feedback);
             for (File repo : repos) {
+                Path localRepoPath = repo.toPath();
                 File[] packages = repo.listFiles(File::isDirectory);
                 if (packages != null) {
                     for (File pkg : packages) {
                         List<File> files =
                                 getFiles(assignment.getFiles(), pkg);
                         if (!files.isEmpty()) {
-                            generateReport(
+                            Path reportPath = generateReport(
                                     pkg.getName(),
                                     feedback,
                                     assignment,
                                     files,
                                     checkStyle
                             );
+
+                            if (reportPath != null) {
+                                reportToRepo.put(reportPath.toAbsolutePath().normalize(),
+                                        localRepoPath.toAbsolutePath().normalize());
+                            }
                         }
                     }
                 }
             }
+        }
+        return reportToRepo;
+    }
+
+    public static void publishFeedbackReport(Path repoDir, Path reportFileInRepo)
+            throws IOException, InterruptedException {
+        Objects.requireNonNull(repoDir, "repoDir");
+        Objects.requireNonNull(reportFileInRepo, "reportFileInRepo");
+        // safety: must be a repo
+        if (!Files.isDirectory(repoDir.resolve(".git"))) {
+            throw new IOException("Not a git repository: " + repoDir);
+        }
+        // pull first (avoid push rejection)
+        runGit(repoDir, "pull", "--rebase");
+        // stage report
+        Path rel = repoDir.relativize(reportFileInRepo);
+        runGit(repoDir, "add", rel.toString());
+        // commit only if there are changes
+        // (git diff --cached --quiet returns exit code 1 if there are staged changes)
+        boolean hasStagedChanges;
+        ProcessBuilder pb = new ProcessBuilder("git", "diff", "--cached", "--quiet");
+        pb.directory(repoDir.toFile());
+        Process p = pb.start();
+        int exit = p.waitFor();
+        hasStagedChanges = exit != 0;
+        if (hasStagedChanges) {
+            runGit(repoDir, "commit", "-m", "Add/update feedback report");
+            runGit(repoDir, "push");
         }
     }
 
@@ -178,7 +214,7 @@ public class Utilities {
         return toGenerate;
     }
 
-    private static void generateReport(String student,
+    private static Path generateReport(String student,
                                        Path path,
                                        Assignment assignment,
                                        List<File> files,
@@ -207,12 +243,11 @@ public class Utilities {
             }
             pw.println("</xmp><script type=\"text/javascript\" " +
                     "src=\"https://csse.msoe.us/gradedown.js\"></script></body></html>");
-        } catch (FileNotFoundException e) {
+            return report;
+        } catch (IOException | InterruptedException e) {
             System.err.println("Could not write file: " + path.getFileName());
-        } catch (IOException e) {
-            System.err.println("Could not write header");
-        } catch (InterruptedException e) {
-            System.err.println("Could not run Checkstyle");
+            System.err.println(e.getMessage());
+            return null;
         }
     }
 
@@ -263,8 +298,8 @@ public class Utilities {
 
     private static void renderRubric(PrintWriter pw, Rubric rubric) {
         final int rubricLineWidth = 76;
-        pw.println(">> | Earned | Possible | Criteria                                     |");
-        pw.println(">> | ------ | -------- | -------------------------------------------- |");
+        pw.println(">> | Earned | Possible | Criteria                                          |");
+        pw.println(">> | ------ | -------- | ------------------------------------------------- |");
 
         for (RubricItem item : rubric.getItems()) {
             String earned = String.format("%3d", item.getPoints());
@@ -292,5 +327,22 @@ public class Utilities {
                 "<title>" + student + "</title>" +
                 "</head><body><xmp>\n" +
                 "# " + assignment.getFullName() + "\n\n";
+    }
+
+    private static void runGit(Path repoDir, String... args)
+            throws IOException, InterruptedException {
+        List<String> cmd = new ArrayList<>();
+        cmd.add("git");
+        cmd.addAll(List.of(args));
+        ProcessBuilder pb = new ProcessBuilder(cmd);
+        pb.directory(repoDir.toFile());
+        pb.redirectErrorStream(true);
+        Process p = pb.start();
+        int exit = p.waitFor();
+        if (exit != 0) {
+            String output = new String(p.getInputStream().readAllBytes());
+            throw new IOException("Git command failed in " + repoDir + ": git "
+                    + String.join(" ", args) + "\n" + output);
+        }
     }
 }

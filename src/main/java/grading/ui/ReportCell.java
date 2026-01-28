@@ -5,10 +5,10 @@
  * Name: Sean Jones
  * Last Updated:
  */
-package main.java.ui;
+package grading.ui;
 
 import javafx.scene.control.ListCell;
-import main.java.grading.ReportState;
+import grading.model.ReportState;
 
 import java.nio.file.Path;
 import java.util.Map;
