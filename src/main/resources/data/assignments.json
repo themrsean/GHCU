@@ -1,0 +1,20 @@
+[ {
+  "shortName" : "HW1",
+  "fullName" : "Homework 1 - Enumerations",
+  "files" : [ "Color.java", "ColorDriver.java" ],
+  "rubric" : {
+    "items" : [ {
+      "description" : "Intermediate Commits",
+      "points" : 10
+    }, {
+      "description" : "Technical Quality",
+      "points" : 60
+    }, {
+      "description" : "Passing Unit Tests",
+      "points" : 20
+    }, {
+      "description" : "Coding Style and Standards",
+      "points" : 10
+    } ]
+  }
+} ]
