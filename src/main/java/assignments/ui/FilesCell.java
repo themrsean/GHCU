@@ -1,9 +1,7 @@
 /*
- * Course: CSC-1120
- * ASSIGNMENT
- * CLASS
- * Name: Sean Jones
- * Last Updated:
+ * Course: CSC-1110/1020/1120
+ * GitHubClassroom Utilities
+ * Last Updated: 1/30/2026
  */
 package assignments.ui;
 

@@ -1,9 +1,7 @@
 /*
- * Course: CSC-1120
- * ASSIGNMENT
- * CLASS
- * Name: Sean Jones
- * Last Updated:
+ * Course: CSC-1110/1020/1120
+ * GitHubClassroom Utilities
+ * Last Updated: 1/30/2026
  */
 package assignments.ui;
 
@@ -34,7 +32,14 @@ public class AssignmentCell extends ListCell<Assignment> {
             }
         });
 
-        editor.setOnAction(_ -> commitEdit(getItem()));
+        editor.setOnAction(_ -> {
+            Assignment a = getItem();
+            if (a != null) {
+                commitEdit(a);
+            } else {
+                cancelEdit();
+            }
+        });
         editor.focusedProperty().addListener((_, _, is) -> {
             if (!is) {
                 cancelEdit();
@@ -81,7 +86,6 @@ public class AssignmentCell extends ListCell<Assignment> {
             setText(null);
             setGraphic(null);
         } else if (isEditing()) {
-            editor.setText(format(item));
             setGraphic(editor);
             setText(null);
         } else {
@@ -106,9 +110,13 @@ public class AssignmentCell extends ListCell<Assignment> {
     public void commitEdit(Assignment assignment) {
         String[] parts = editor.getText().split("\\s*[–-]\\s*", 2);
         if (parts.length == 2) {
-            assignment.setShortName(parts[0].trim());
-            assignment.setFullName(parts[1].trim());
-            super.commitEdit(assignment);
+            try {
+                assignment.setShortName(parts[0].trim());
+                assignment.setFullName(parts[1].trim());
+                super.commitEdit(assignment);
+            } catch (IllegalArgumentException | NullPointerException e) {
+                cancelEdit();
+            }
         } else {
             cancelEdit();
         }
