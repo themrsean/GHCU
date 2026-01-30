@@ -1,7 +1,7 @@
 /*
  * Course: CSC-1110/1020/1120
  * GitHubClassroom Utilities
- * Last Updated: 1/23/2026
+ * Last Updated: 1/29/2026
  */
 package mainui.controller;
 
@@ -83,46 +83,86 @@ import java.util.Scanner;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
-
 /**
- * Controller for GHCU
+ * JavaFX controller for the GitHub Classroom Utilities (GHCU) main window.
+ * <p>
+ * This controller manages:
+ * </p>
+ * <ul>
+ *   <li>Loading required application resources and configuration files from the
+ *   user data directory</li>
+ *   <li>Displaying and editing {@link Assignment} objects (including files and rubric items)</li>
+ *   <li>Managing a working directory that contains pulled repositories and generated artifacts</li>
+ *   <li>Executing the grading pipeline steps (pull, extract packages, generate imports,
+ *   generate reports)</li>
+ *   <li>Running long operations in background {@link Task}s while updating UI progress and
+ *   feedback output</li>
+ *   <li>Launching the grading window and maintaining a {@link ReportRepoIndex} mapping reports
+ *   to repositories</li>
+ * </ul>
+ *
+ * <p>
+ * The UI is defined in an associated FXML file. User actions are handled through
+ * {@code @FXML}-annotated methods, while helper methods support validation, persistence,
+ * and UI wiring.
+ * </p>
+ *
+ * @author Sean Jones
  */
 @SuppressWarnings("unused")
 public class MainController implements Initializable {
+    /* Constants */
     private static final Path APP_DATA_DIR =
             Paths.get(System.getProperty("user.home"), ".ghcu");
     private static final Path DATA_DIR = APP_DATA_DIR.resolve("data");
+    private static final Path ASSIGNMENTS_JSON =
+            DATA_DIR.resolve("assignments.json");
+    private static final Path CONFIG_PATH =
+            DATA_DIR.resolve("config.txt");
+    private static final Path IGNORED_PATH =
+            DATA_DIR.resolve("ignored.txt");
     private static final String DROP_STYLE =
             "-fx-background-color: derive(-fx-accent, 70%);" +
                     "-fx-border-color: -fx-accent; -fx-border-width: 2;";
-    private static final Path ASSIGNMENTS_JSON =
-            DATA_DIR.resolve("assignments.json");
-    private final Path config =
-            DATA_DIR.resolve("config.txt");
-    private Path ignored =
-            DATA_DIR.resolve("ignored.txt");
-    private final List<String> ignoredFiles = new ArrayList<>();
-    private final TextInputDialog input = new TextInputDialog();
+
+    /* Application State */
     private final ObservableList<Assignment> assignments = FXCollections.observableArrayList();
     private final ReportRepoIndex reportRepoIndex = new ReportRepoIndex();
+    private Path ignored = IGNORED_PATH;
+    private final List<String> ignoredFiles = new ArrayList<>();
+
+    /* UI */
+    private final TextInputDialog input = new TextInputDialog();
     private final FileChooser chooser = new FileChooser();
+
+    /* Task state */
     private Task<?> currentTask;
 
-    @FXML
-    private TextField repositoryField;
-    @FXML
-    private TextField pathField;
-    @FXML
-    private CheckBox checkStyleBox;
-    @FXML
-    private ListView<Assignment> assignmentListView;
-    @FXML
-    private ListView<String> filesListView;
-    @FXML
-    private TextArea feedback;
-    @FXML
-    private ProgressBar progressBar;
+    /* FXML Controls */
+    @FXML private TextField repositoryField;
+    @FXML private TextField pathField;
+    @FXML private CheckBox checkStyleBox;
+    @FXML private ListView<Assignment> assignmentListView;
+    @FXML private ListView<String> filesListView;
+    @FXML private TextArea feedback;
+    @FXML private ProgressBar progressBar;
 
+    /**
+     * Initializes this controller after its root element has been completely processed.
+     * <p>
+     * This method is invoked automatically by the JavaFX framework. It performs all
+     * one-time initialization tasks required to make the UI functional, including:
+     * </p>
+     * <ul>
+     *     <li>Creating the application data directory and copying default resources if missing</li>
+     *     <li>Configuring list views, selection listeners, and model listeners</li>
+     *     <li>Loading assignments from disk</li>
+     *     <li>Loading ignored-file configuration and enabling feedback auto-scroll</li>
+     * </ul>
+     *
+     * @param url the location used to resolve relative paths for the root object, or {@code null}
+     * @param resourceBundle the resources used to localize the root object, or {@code null}
+     */
     @Override
     public void initialize(URL url, ResourceBundle resourceBundle) {
         loadResources();
@@ -135,20 +175,13 @@ public class MainController implements Initializable {
         configureFeedbackAutoScroll();
     }
 
-    public void registerReportRepo(Path reportPath, Path localRepoPath) {
-        reportRepoIndex.register(reportPath, localRepoPath);
-    }
-
-    public Optional<Path> getRepoForReport(Path reportPath) {
-        return reportRepoIndex.findRepoForReport(reportPath);
-    }
-
+    /* Resource loading */
     private void loadResources() {
         try {
             Files.createDirectories(DATA_DIR);
             copyIfMissing("data/assignments.json", ASSIGNMENTS_JSON);
-            copyIfMissing("data/config.txt", config);
-            copyIfMissing("data/ignored.txt", ignored);
+            copyIfMissing("data/config.txt", CONFIG_PATH);
+            copyIfMissing("data/ignored.txt", IGNORED_PATH);
         } catch (IOException e) {
             makeAlert("Initialization Error", "Cannot load config files",
                     "Cannot load needed files. Exiting");
@@ -170,6 +203,7 @@ public class MainController implements Initializable {
         }
     }
 
+    /* UI wiring */
     private void configureAssignmentListView() {
         assignmentListView.setCellFactory(_ -> new AssignmentCell());
         assignmentListView.setEditable(true);
@@ -221,6 +255,7 @@ public class MainController implements Initializable {
         );
     }
 
+    /* Model loading */
     private void loadAssignmentsFromDisk() {
         if (Files.exists(ASSIGNMENTS_JSON)) {
             try {
@@ -270,9 +305,6 @@ public class MainController implements Initializable {
         filesListView.setCellFactory(list ->
                 new FilesCell(name -> {
                     ObservableList<String> files = filesSupplier.get();
-                    if (files == null) {
-                        return false;
-                    }
                     return files.stream()
                             .filter(name::equals)
                             .count() > 1;
@@ -280,8 +312,47 @@ public class MainController implements Initializable {
         );
     }
 
+    private void configureFileDragAndDrop(
+            ListView<String> fileList,
+            Supplier<ObservableList<String>> targetListSupplier
+    ) {
+        fileList.setOnDragOver(event -> {
+            Dragboard db = event.getDragboard();
+            if (db.hasFiles()) {
+                ObservableList<String> target = targetListSupplier.get();
+                if (target != null) {
+                    event.acceptTransferModes(TransferMode.COPY);
+                    fileList.setStyle(DROP_STYLE);
+                }
+            }
+
+            event.consume();
+        });
+        fileList.setOnDragExited(event -> {
+            fileList.setStyle("");
+            event.consume();
+        });
+        fileList.setOnDragDropped(event -> {
+            Dragboard db = event.getDragboard();
+            boolean success = false;
+            ObservableList<String> target = targetListSupplier.get();
+            if (db.hasFiles() && target != null) {
+                for (File file : db.getFiles()) {
+                    String name = file.getName();
+                    if (!target.contains(name)) {
+                        target.add(name);
+                    }
+                }
+                success = true;
+            }
+            event.setDropCompleted(success);
+            fileList.setStyle("");
+            event.consume();
+        });
+    }
+
     private void configureIgnoredFiles() {
-        try (Scanner in = new Scanner(config)) {
+        try (Scanner in = new Scanner(CONFIG_PATH)) {
             ignored = Paths.get(in.nextLine());
         } catch (IOException e) {
             makeAlert("File Not Found",
@@ -289,8 +360,8 @@ public class MainController implements Initializable {
                     "Cannot load the configuration file");
         }
 
-        if (ignored.toFile().exists()) {
-            try (Scanner in = new Scanner(ignored)) {
+        if (IGNORED_PATH.toFile().exists()) {
+            try (Scanner in = new Scanner(IGNORED_PATH)) {
                 while (in.hasNextLine()) {
                     ignoredFiles.add(in.nextLine());
                 }
@@ -309,8 +380,17 @@ public class MainController implements Initializable {
         );
     }
 
-    @FXML
-    private void open() {
+    /* Handler methods */
+
+    /* App-level actions */
+    /**
+     * Opens a directory chooser and sets the selected directory as the working directory.
+     * <p>
+     * The chosen directory path is written to {@link #pathField}. This working directory
+     * is required for repository operations (pulling, extracting, generating reports).
+     * </p>
+     */
+    @FXML private void open() {
         DirectoryChooser chooser = new DirectoryChooser();
         File file = chooser.showDialog(pathField.getScene().getWindow());
         if (file != null) {
@@ -319,195 +399,24 @@ public class MainController implements Initializable {
         }
     }
 
-    @FXML
-    private void quit() {
+    /**
+     * Exits the application.
+     * <p>
+     * This delegates to {@link Platform#exit()} to shut down the JavaFX application thread.
+     * </p>
+     */
+    @FXML private void quit() {
         Platform.exit();
     }
 
-    @FXML
-    private void addToIgnored() {
-        input.setTitle("Add File to Ignored List");
-        input.setHeaderText("Enter the file to add to the Ignored List");
-        StringBuilder sb = new StringBuilder();
-        for (String s : ignoredFiles) {
-            sb.append(s).append("\n");
-        }
-        input.setContentText(sb.toString());
-        Optional<String> filename = input.showAndWait();
-        if (filename.isPresent()) {
-            try (PrintWriter pw = new PrintWriter(new FileOutputStream(ignored.toFile(), true))) {
-                pw.append(filename.get()).append("\n");
-                ignoredFiles.add(filename.get());
-                feedback.appendText(filename.get() + " added to ignored list.\n");
-            } catch (IOException e) {
-                String[] messages = {"Could not write",
-                        "Ignored list not updated", "Cannot save changes to the ignored list"};
-                makeAlert(messages);
-            }
-        }
-    }
-
-    @FXML
-    private void pullRepositories() {
-        withWorkingDirectory(
-                "No Working Directory",
-                "Select a working directory",
-                "Pulling repositories requires a working directory",
-                workingDir -> {
-                    runTask(
-                            () -> new Task<Void>() {
-                                @Override
-                                protected Void call() throws Exception {
-                                    Utilities.pullRepositories(
-                                            repositoryField.getText(),
-                                            workingDir
-                                    );
-                                    return null;
-                                }
-                            },
-                            "Pulling down student repositories...",
-                            "Pulled down all student repositories.");
-                }
-        );
-    }
-
-    @FXML
-    private void extractPackages() {
-        withWorkingDirectory(
-                "No Working Directory",
-                "Select a working directory",
-                "Extracting packages requires a working directory",
-                workingDir -> runTask(
-                        () -> new Task<Void>() {
-                            @Override
-                            protected Void call() throws IOException {
-                                Utilities.extractPackages(
-                                        workingDir,
-                                        ignoredFiles
-                                );
-                                return null;
-                            }
-                        },
-                        "Extracting packages from repositories...",
-                        "Packages extracted."
-                )
-        );
-    }
-
-    @FXML
-    private void extractImports() {
-        withWorkingDirectory(
-                "No Working Directory",
-                "Select a working directory",
-                "Extracting imports requires a working directory",
-                workingDir -> runTask(
-                        () -> new Task<Void>() {
-                            @Override
-                            protected Void call() {
-                                Utilities.generateImports(
-                                        workingDir.resolve("submissions")
-                                );
-                                return null;
-                            }
-                        },
-                        "Extracting imports...",
-                        "Imports extracted."
-                )
-        );
-    }
-
-
-    @FXML
-    private void generateReports() {
-        withSelectedAssignment(
-                "No Assignment Selected",
-                "Select an assignment",
-                "Reports require an assignment",
-                assignment -> withWorkingDirectory(
-                        "No Working Directory",
-                        "Select a working directory",
-                        "Reports require a working directory",
-                        workingDir -> runTask(
-                                () -> new Task<Void>() {
-                                    @Override
-                                    protected Void call() throws IOException {
-                                        generateReportsAndRegisterMapping(
-                                                workingDir.resolve("submissions"),
-                                                assignment,
-                                                checkStyleBox.isSelected()
-                                        );
-                                        return null;
-                                    }
-                                },
-                                "Generating student feedback reports...",
-                                "Feedback reports generated."
-                        )
-                )
-        );
-    }
-
-    @FXML
-    private void runAll() {
-        final double repositoryCompletion = 0.3;
-        final double packageCompletion = 0.6;
-        final double importCompletion = 0.8;
-
-        withSelectedAssignment(
-                "No Assignment Selected",
-                "Select an assignment",
-                "Reports require an assignment",
-                assignment -> withWorkingDirectory(
-                        "No Working Directory",
-                        "Select a working directory",
-                        "Run All requires a working directory",
-                        workingDir -> runTask(
-                                () -> new Task<Void>() {
-                                    @Override
-                                    protected Void call() throws Exception {
-                                        updateMessage("Pulling repositories...");
-                                        updateProgress(0.0, 1.0);
-                                        Utilities.pullRepositories(
-                                                repositoryField.getText(),
-                                                workingDir
-                                        );
-                                        if (!isCancelled()) {
-                                            updateMessage("Extracting packages...");
-                                            updateProgress(repositoryCompletion, 1.0);
-                                            Utilities.extractPackages(
-                                                    workingDir,
-                                                    ignoredFiles
-                                            );
-                                            if (!isCancelled()) {
-                                                updateMessage("Generating imports...");
-                                                updateProgress(packageCompletion, 1.0);
-                                                Utilities.generateImports(
-                                                        workingDir.resolve("submissions")
-                                                );
-                                                if (!isCancelled()) {
-                                                    updateMessage("Generating reports...");
-                                                    updateProgress(importCompletion, 1.0);
-                                                    generateReportsAndRegisterMapping(
-                                                            workingDir.resolve("submissions"),
-                                                            assignment,
-                                                            checkStyleBox.isSelected()
-                                                    );
-                                                }
-                                            }
-                                        }
-                                        updateProgress(1.0, 1.0);
-                                        updateMessage("Run All complete.");
-                                        return null;
-                                    }
-                                },
-                                "Starting full pipeline...",
-                                "Run All complete."
-                        )
-                )
-        );
-    }
-
-    @FXML
-    private void help() {
+    /**
+     * Displays the user manual/help documentation.
+     * <p>
+     * Loads {@code data/README.md} from application resources, converts it from Markdown
+     * to HTML, and displays it in a new window using a {@link WebView}.
+     * </p>
+     */
+    @FXML private void help() {
         try (InputStream is = getClass()
                 .getClassLoader()
                 .getResourceAsStream("data/README.md")) {
@@ -534,189 +443,14 @@ public class MainController implements Initializable {
         }
     }
 
-    @FXML
-    private void addAssignment() {
-        Assignment assignment = showAssignmentDialog(null);
-        if (assignment != null) {
-            attachFileListener(assignment);
-            attachMetadataListener(assignment);
-            attachRubricListener(assignment);
-            assignments.add(assignment);
-        }
-    }
-
-    @FXML
-    private void removeAssignment() {
-        withSelectedAssignment(
-                "No Assignment Selected",
-                "Select an assignment",
-                "Nothing to remove",
-                assignments::remove
-        );
-    }
-
-
-    @FXML
-    private void addFilesToAssignment() {
-        withSelectedAssignment(
-                "No Assignment Selected",
-                "Select an assignment",
-                "Nothing to edit",
-                assignment -> {
-                    TextInputDialog dialog = new TextInputDialog();
-                    dialog.setTitle("Add File");
-                    dialog.setHeaderText("Enter file name");
-                    dialog.showAndWait()
-                            .map(String::trim)
-                            .filter(s -> !s.isEmpty())
-                            .ifPresent(assignment.getFiles()::add);
-                }
-        );
-    }
-
-    @FXML
-    private void removeFileFromAssignment() {
-        String file = filesListView.getSelectionModel().getSelectedItem();
-        withSelectedAssignment(
-                "No Assignment Selected",
-                "Select an assignment",
-                "Nothing to edit",
-                assignment -> {
-                    if (file != null) {
-                        assignment.getFiles().remove(file);
-                    }
-                }
-        );
-    }
-
-    @FXML
-    private void editAssignment() {
-        withSelectedAssignment(
-                "No Assignment Selected",
-                "Select an assignment",
-                "Nothing to edit",
-                this::showAssignmentDialog
-        );
-    }
-
-    @FXML
-    private void saveAssignments() {
-        try {
-            AssignmentStore.save(
-                    ASSIGNMENTS_JSON,
-                    assignments
-            );
-        } catch (IOException e) {
-            makeAlert("Save Failed",
-                    "Could not save assignments",
-                    e.getMessage());
-        }
-    }
-
-    @FXML
-    private void editRubric() {
-        withSelectedAssignment(
-                "No Assignment Selected",
-                "Select an assignment",
-                "Nothing to edit",
-                assignment -> {
-                    if (!assignment.getRubric().isValid()) {
-                        makeAlert("Invalid Rubric",
-                                "Total must equal 100 points",
-                                "Current total: " +
-                                        assignment.getRubric().getTotalPoints());
-                    } else {
-                        VBox rubricEditor = buildRubricEditor(assignment.getRubric());
-                        Alert dialog = new Alert(Alert.AlertType.CONFIRMATION);
-                        dialog.setTitle("Edit Rubric");
-                        dialog.setHeaderText(
-                                "Total Points: " + assignment.getRubric().getTotalPoints());
-                        dialog.getDialogPane().setContent(rubricEditor);
-                        dialog.showAndWait();
-                    }
-                }
-        );
-    }
-
-    @FXML
-    private void openGradingWindow() {
-        withSelectedAssignment(
-                "No Assignment Selected",
-                "Select an assignment",
-                "Reports require an assignment",
-                assignment -> {
-                    Path reportsDir = Paths.get(
-                            pathField.getText(),
-                            "submissions",
-                            "feedback"
-                    );
-
-                    if (!Files.exists(reportsDir)) {
-                        makeAlert(
-                                "No Reports Found",
-                                "Generate reports first",
-                                "No grading files exist for this assignment"
-                        );
-                    } else {
-                        try {
-                            FXMLLoader loader = new FXMLLoader(
-                                    getClass().getResource("/grading/grading.fxml")
-                            );
-                            Scene scene = new Scene(loader.load());
-                            GradingController gradingController = loader.getController();
-                            gradingController.setReportRepoIndex(reportRepoIndex);
-
-                            Stage stage = new Stage();
-                            stage.setTitle("Grading – " + assignment.getShortName());
-                            stage.setScene(scene);
-
-                            URL css = getClass().getResource("/grading/editor.css");
-                            scene.getStylesheets().add(
-                                    Objects.requireNonNull(css).toExternalForm()
-                            );
-
-                            stage.initOwner(pathField.getScene().getWindow());
-                            gradingController.loadReportFolder(reportsDir);
-                            gradingController.installAccelerators(scene);
-                            stage.setOnCloseRequest(e -> gradingController.onClose());
-                            stage.show();
-                        } catch (IOException e) {
-                            makeAlert(
-                                    "Failed to Open Grading Window",
-                                    "FXML load error",
-                                    e.getMessage()
-                            );
-                        }
-                    }
-                }
-        );
-    }
-
-    private @NonNull VBox getVBox(Assignment assignment, TableView<RubricItem> table) {
-        Button add = new Button("Add");
-        add.setOnAction(_ ->
-                assignment.getRubric().getItems()
-                        .add(new RubricItem("New Item", 0)));
-        Button remove = new Button("Remove");
-        remove.setOnAction(_ -> {
-            RubricItem item = table.getSelectionModel().getSelectedItem();
-            if (item != null) {
-                assignment.getRubric().getItems().remove(item);
-            }
-        });
-        final int spacing = 10;
-        return new VBox(spacing, table, new HBox(spacing, add, remove));
-    }
-
-    @FXML
-    private void cancelCurrentTask() {
-        if (currentTask != null) {
-            currentTask.cancel();
-        }
-    }
-
-    @FXML
-    private void loadConfig() {
+    /**
+     * Loads a configuration file selected by the user.
+     * <p>
+     * The selected file is expected to contain a single line representing the path to
+     * the ignored-files list. The controller updates {@link #ignored} accordingly.
+     * </p>
+     */
+    @FXML private void loadConfig() {
         File file = chooser.showOpenDialog(pathField.getScene().getWindow());
         if (file != null) {
             try (Scanner in = new Scanner(file)) {
@@ -729,64 +463,560 @@ public class MainController implements Initializable {
         }
     }
 
-    private void attachFileListener(Assignment assignment) {
-        assignment.getFiles().addListener(
-                (javafx.collections.ListChangeListener<String>) change -> {
-                    while (change.next()) {
-                        if (change.wasAdded() || change.wasRemoved()) {
-                            saveAssignments();
-                        }
-                    }
-                }
-        );
-    }
-
-    private void attachMetadataListener(Assignment assignment) {
-        assignment.shortNameProperty().addListener((_, _, _) -> {
-            assignmentListView.refresh();
-            saveAssignments();
-        });
-        assignment.fullNameProperty().addListener((_, _, _) -> {
-            assignmentListView.refresh();
-            saveAssignments();
-        });
-    }
-
-    private void attachRubricListener(Assignment assignment) {
-        assignment.getRubric().getItems().addListener(
-                (javafx.collections.ListChangeListener<RubricItem>) change -> {
-                    while (change.next()) {
-                        saveAssignments();
-                    }
-                }
-        );
-    }
-
-    private void makeAlert(String... messages) {
-        Alert alert = new Alert(Alert.AlertType.ERROR);
-        int length = messages.length;
-        switch (length) {
-            case 1 -> alert.setContentText(messages[0]);
-            case 2 -> {
-                alert.setHeaderText(messages[0]);
-                alert.setContentText(messages[1]);
-            }
-            case 3 -> {
-                alert.setTitle(messages[0]);
-                alert.setHeaderText(messages[1]);
-                alert.setContentText(messages[2]);
+    /**
+     * Adds a new file name to the ignored-files list.
+     * <p>
+     * Prompts the user for a file name and appends it to the ignored file list on disk,
+     * also updating the in-memory {@link #ignoredFiles} list.
+     * </p>
+     */
+    @FXML private void addToIgnored() {
+        input.setTitle("Add File to Ignored List");
+        input.setHeaderText("Enter the file to add to the Ignored List");
+        StringBuilder sb = new StringBuilder();
+        for (String s : ignoredFiles) {
+            sb.append(s).append("\n");
+        }
+        input.setContentText(sb.toString());
+        Optional<String> filename = input.showAndWait();
+        if (filename.isPresent()) {
+            try (PrintWriter pw = new PrintWriter(new FileOutputStream(IGNORED_PATH.toFile(),
+                    true))) {
+                pw.append(filename.get()).append("\n");
+                ignoredFiles.add(filename.get());
+                feedback.appendText(filename.get() + " added to ignored list.\n");
+            } catch (IOException e) {
+                String[] messages = {"Could not write",
+                        "Ignored list not updated", "Cannot save changes to the ignored list"};
+                makeAlert(messages);
             }
         }
-        alert.show();
     }
 
-    private String convertMarkdownToHtml(String markdownText) {
-        Parser parser = Parser.builder().build();
-        Node document = parser.parse(markdownText);
-        HtmlRenderer renderer = HtmlRenderer.builder().build();
-        return renderer.render(document);
+    /* Pipeline actions */
+    /**
+     * Pulls student repositories into the selected working directory.
+     * <p>
+     * This operation runs in a background {@link Task} to avoid blocking the UI thread.
+     * The repository command is taken from {@link #repositoryField}.
+     * </p>
+     */
+    @FXML private void pullRepositories() {
+        Optional<Path> optWorkingDir = withWorkingDirectory(
+                "Pulling repositories requires a working directory"
+        );
+
+        optWorkingDir.ifPresent(workingDir -> runTask(
+                () -> new Task<Void>() {
+                    @Override
+                    protected Void call() throws Exception {
+                        Utilities.pullRepositories(
+                                repositoryField.getText(),
+                                workingDir
+                        );
+                        return null;
+                    }
+                },
+                "Pulling down student repositories...",
+                "Pulled down all student repositories."
+        ));
     }
 
+    /**
+     * Extracts student source packages from pulled repositories.
+     * <p>
+     * Searches the working directory for {@code src} directories and copies their contents
+     * into the {@code submissions} folder, excluding entries listed in {@link #ignoredFiles}.
+     * This operation runs in a background {@link Task}.
+     * </p>
+     */
+    @FXML private void extractPackages() {
+        Optional<Path> optWorkingDir = withWorkingDirectory(
+                "Extracting packages requires a working directory"
+        );
+        optWorkingDir.ifPresent(workingDir -> runTask(
+                () -> new Task<Void>() {
+                    @Override
+                    protected Void call() throws IOException {
+                        Utilities.extractPackages(
+                                workingDir,
+                                ignoredFiles
+                        );
+                        return null;
+                    }
+                },
+                "Extracting packages from repositories...",
+                "Packages extracted."
+        ));
+    }
+
+    /**
+     * Generates an {@code imports.txt} file containing package import statements.
+     * <p>
+     * The imports are generated from directories under {@code submissions}. This operation
+     * runs in a background {@link Task}.
+     * </p>
+     */
+    @FXML private void extractImports() {
+        Optional<Path> optWorkingDir = withWorkingDirectory(
+                "Extracting imports requires a working directory"
+        );
+        optWorkingDir.ifPresent(workingDir -> runTask(
+                () -> new Task<Void>() {
+                    @Override
+                    protected Void call() {
+                        try {
+                            Utilities.generateImports(
+                                    workingDir.resolve("submissions")
+                            );
+                        } catch (IOException e) {
+                            makeAlert("File Error", "imports.txt not create",
+                                    "Could not create the import.txt file");
+                        }
+                        return null;
+                    }
+                },
+                "Extracting imports...",
+                "Imports extracted."
+        ));
+    }
+
+    /**
+     * Generates feedback reports for the selected assignment.
+     * <p>
+     * Requires both a selected assignment and a valid working directory. Reports are written
+     * under {@code submissions/feedback}. Optionally runs CheckStyle based on the
+     * {@link #checkStyleBox} setting. This operation runs in a background {@link Task}.
+     * </p>
+     */
+    @FXML private void generateReports() {
+        Optional<Assignment> optAssignment = withSelectedAssignment(
+                "Reports require an assignment"
+        );
+        Optional<Path> optWorkingDir = withWorkingDirectory(
+                "Reports require a working directory"
+        );
+
+        if (optAssignment.isPresent() && optWorkingDir.isPresent()) {
+            Assignment assignment = optAssignment.get();
+            Path workingDir = optWorkingDir.get();
+            runTask(
+                    () -> new Task<Void>() {
+                        @Override
+                        protected Void call() throws IOException {
+                            generateReportsAndRegisterMapping(
+                                    workingDir.resolve("submissions"),
+                                    assignment,
+                                    checkStyleBox.isSelected()
+                            );
+                            return null;
+                        }
+                    },
+                    "Generating student feedback reports...",
+                    "Feedback reports generated."
+            );
+        }
+    }
+
+    /**
+     * Runs the full pipeline: pull repositories, extract packages, generate imports, and
+     * generate reports.
+     * <p>
+     * Requires both a selected assignment and a valid working directory. Each step updates
+     * progress and status messages in the UI. This operation runs in a background {@link Task}.
+     * </p>
+     */
+    @FXML private void runAll() {
+        final double repositoryCompletion = 0.3;
+        final double packageCompletion = 0.6;
+        final double importCompletion = 0.8;
+        Optional<Assignment> optAssignment = withSelectedAssignment(
+                "Reports require an assignment"
+        );
+        Optional<Path> optWorkingDir = withWorkingDirectory(
+                "Run All requires a working directory"
+        );
+        if (optAssignment.isPresent() && optWorkingDir.isPresent()) {
+            Assignment assignment = optAssignment.get();
+            Path workingDir = optWorkingDir.get();
+            runTask(
+                    () -> new Task<Void>() {
+                        @Override
+                        protected Void call() throws Exception {
+                            updateMessage("Pulling repositories...");
+                            updateProgress(0.0, 1.0);
+                            Utilities.pullRepositories(repositoryField.getText(), workingDir);
+                            if (!isCancelled()) {
+                                updateMessage("Extracting packages...");
+                                updateProgress(repositoryCompletion, 1.0);
+                                Utilities.extractPackages(workingDir, ignoredFiles);
+                                if (!isCancelled()) {
+                                    updateMessage("Generating imports...");
+                                    updateProgress(packageCompletion, 1.0);
+                                    Utilities.generateImports(workingDir.resolve("submissions"));
+                                    if (!isCancelled()) {
+                                        updateMessage("Generating reports...");
+                                        updateProgress(importCompletion, 1.0);
+                                        generateReportsAndRegisterMapping(
+                                                workingDir.resolve("submissions"),
+                                                assignment,
+                                                checkStyleBox.isSelected()
+                                        );
+                                    }
+                                }
+                            }
+                            updateProgress(1.0, 1.0);
+                            updateMessage("Run All complete.");
+                            return null;
+                        }
+                    },
+                    "Starting full pipeline...",
+                    "Run All complete."
+            );
+        }
+    }
+
+    /**
+     * Cancels the currently running background task, if any.
+     * <p>
+     * If a task is running, it is requested to cancel via {@link Task#cancel()}.
+     * </p>
+     */
+    @FXML private void cancelCurrentTask() {
+        if (currentTask != null) {
+            currentTask.cancel();
+        }
+    }
+
+    /**
+     * Opens the grading window for the selected assignment.
+     * <p>
+     * Requires a selected assignment and a valid working directory. The grading window loads
+     * reports from {@code submissions/feedback}. If reports are missing, an error is shown.
+     * </p>
+     */
+    @FXML private void openGradingWindow() {
+        Optional<Assignment> optAssignment = withSelectedAssignment(
+                "Reports require an assignment"
+        );
+        Optional<Path> optWorkingDir = withWorkingDirectory(
+                "Grading requires a working directory"
+        );
+        if (optAssignment.isPresent() && optWorkingDir.isPresent()) {
+            Assignment assignment = optAssignment.get();
+            Path workingDir = optWorkingDir.get();
+            Path reportsDir = workingDir.resolve("submissions")
+                    .resolve("feedback");
+            if (!Files.isDirectory(reportsDir)) {
+                makeAlert(
+                        "No Reports Found",
+                        "Generate reports first",
+                        "No grading files exist for this assignment"
+                );
+            } else {
+                try {
+                    FXMLLoader loader = new FXMLLoader(
+                            getClass().getResource("/grading/grading.fxml")
+                    );
+                    Scene scene = new Scene(loader.load());
+                    GradingController gradingController = loader.getController();
+                    gradingController.setReportRepoIndex(reportRepoIndex);
+                    Stage stage = new Stage();
+                    stage.setTitle("Grading – " + assignment.getShortName());
+                    stage.setScene(scene);
+                    URL css = getClass().getResource("/grading/editor.css");
+                    if (css != null) {
+                        scene.getStylesheets().add(css.toExternalForm());
+                    } else {
+                        makeAlert("Missing Resource", "CSS not found",
+                                "/grading/editor.css missing");
+                    }
+                    stage.initOwner(pathField.getScene().getWindow());
+                    gradingController.loadReportFolder(reportsDir);
+                    gradingController.installAccelerators(scene);
+                    stage.setOnCloseRequest(e -> gradingController.onClose());
+                    stage.show();
+                } catch (IOException e) {
+                    makeAlert(
+                            "Failed to Open Grading Window",
+                            "FXML load error",
+                            e.getMessage()
+                    );
+                }
+            }
+        }
+    }
+
+    /* Assignment management */
+    /**
+     * Creates a new assignment and adds it to the assignments list.
+     * <p>
+     * Displays the assignment editor dialog. If the user completes the dialog successfully,
+     * listeners are attached and the new assignment is added to {@link #assignments}.
+     * </p>
+     */
+    @FXML private void addAssignment() {
+        Assignment assignment = showAssignmentDialog(null);
+        if (assignment != null) {
+            attachFileListener(assignment);
+            attachMetadataListener(assignment);
+            attachRubricListener(assignment);
+            assignments.add(assignment);
+        }
+    }
+
+    /**
+     * Removes the currently selected assignment from the assignments list.
+     * <p>
+     * If no assignment is selected, an error alert is shown.
+     * </p>
+     */
+    @FXML private void removeAssignment() {
+        Optional<Assignment> optAssignment = withSelectedAssignment(
+                "Nothing to remove"
+        );
+        optAssignment.ifPresent(assignments::remove);
+    }
+
+    /**
+     * Edits the currently selected assignment.
+     * <p>
+     * Displays the assignment editor dialog populated with the selected assignment data.
+     * If no assignment is selected, an error alert is shown.
+     * </p>
+     */
+    @FXML private void editAssignment() {
+        Optional<Assignment> optAssignment = withSelectedAssignment(
+                "Nothing to edit"
+        );
+        optAssignment.ifPresent(this::showAssignmentDialog);
+    }
+
+    /**
+     * Adds a file name to the currently selected assignment's file list.
+     * <p>
+     * Prompts the user for a file name and adds it to the assignment. If no assignment is
+     * selected, an error alert is shown.
+     * </p>
+     */
+    @FXML private void addFilesToAssignment() {
+        Optional<Assignment> optAssignment = withSelectedAssignment(
+                "Nothing to edit"
+        );
+        if (optAssignment.isPresent()) {
+            Assignment assignment = optAssignment.get();
+            TextInputDialog dialog = new TextInputDialog();
+            dialog.setTitle("Add File");
+            dialog.setHeaderText("Enter file name");
+            dialog.showAndWait()
+                    .map(String::trim)
+                    .filter(s -> !s.isEmpty())
+                    .ifPresent(assignment.getFiles()::add);
+        }
+    }
+
+    /**
+     * Removes the selected file name from the currently selected assignment.
+     * <p>
+     * Uses the current selection in {@link #filesListView}. If no assignment is selected,
+     * an error alert is shown. If no file is selected, this method performs no action.
+     * </p>
+     */
+    @FXML private void removeFileFromAssignment() {
+        String file = filesListView.getSelectionModel().getSelectedItem();
+        Optional<Assignment> optAssignment = withSelectedAssignment(
+                "Nothing to edit"
+        );
+        if (optAssignment.isPresent()) {
+            Assignment assignment = optAssignment.get();
+
+            if (file != null) {
+                assignment.getFiles().remove(file);
+            }
+        }
+    }
+
+    /**
+     * Opens the rubric editor for the currently selected assignment.
+     * <p>
+     * If the rubric is invalid (total not equal to 100 points), an error is shown.
+     * Otherwise, a rubric editor dialog is displayed allowing rubric items to be edited.
+     * </p>
+     */
+    @FXML private void editRubric() {
+        Optional<Assignment> optAssignment = withSelectedAssignment(
+                "Nothing to edit"
+        );
+        if (optAssignment.isPresent()) {
+            Assignment assignment = optAssignment.get();
+            if (!assignment.getRubric().isValid()) {
+                makeAlert("Invalid Rubric",
+                        "Total must equal 100 points",
+                        "Current total: " +
+                                assignment.getRubric().getTotalPoints());
+            } else {
+                VBox rubricEditor = buildRubricEditor(assignment.getRubric());
+                Alert dialog = new Alert(Alert.AlertType.CONFIRMATION);
+                dialog.setTitle("Edit Rubric");
+                dialog.setHeaderText(
+                        "Total Points: " + assignment.getRubric().getTotalPoints());
+                dialog.getDialogPane().setContent(rubricEditor);
+                dialog.showAndWait();
+            }
+        }
+    }
+
+    /**
+     * Saves the current assignments list to disk.
+     * <p>
+     * Persists assignments to {@code assignments.json}. If saving fails, an error alert is shown.
+     * </p>
+     */
+    @FXML private void saveAssignments() {
+        try {
+            AssignmentStore.save(
+                    ASSIGNMENTS_JSON,
+                    assignments
+            );
+        } catch (IOException e) {
+            makeAlert("Save Failed",
+                    "Could not save assignments",
+                    e.getMessage());
+        }
+    }
+
+    /**
+     * Registers an association between a generated feedback report file and the local
+     * repository directory it was produced from.
+     * <p>
+     * This mapping is used later during grading/publishing so the application can
+     * locate the correct repository corresponding to a specific report.
+     * </p>
+     *
+     * @param reportPath the generated report file path
+     * @param localRepoPath the local repository directory path
+     * @throws NullPointerException if either argument is {@code null}
+     */
+    public void registerReportRepo(Path reportPath, Path localRepoPath) {
+        reportRepoIndex.register(reportPath, localRepoPath);
+    }
+
+    /**
+     * Looks up the local repository directory associated with the given feedback report.
+     * <p>
+     * The mapping is populated when reports are generated (or when the full pipeline
+     * is executed). If no mapping exists for the given report path, an empty result
+     * is returned.
+     * </p>
+     *
+     * @param reportPath the report file path to resolve
+     * @return an {@link Optional} containing the repository directory if known; otherwise
+     *         {@link Optional#empty()}
+     * @throws NullPointerException if {@code reportPath} is {@code null}
+     */
+    public Optional<Path> getRepoForReport(Path reportPath) {
+        return reportRepoIndex.findRepoForReport(reportPath);
+    }
+
+    private void generateReportsAndRegisterMapping(
+            Path submissionsDir,
+            Assignment assignment,
+            boolean runCheckStyle
+    ) throws IOException {
+        Map<Path, Path> mapping =
+                Utilities.generateReports(submissionsDir, assignment, runCheckStyle);
+        Objects.requireNonNull(mapping)
+                .forEach(this::registerReportRepo);
+    }
+
+    /* Safety and Threading methods */
+    private Optional<Assignment> withSelectedAssignment(
+            String message
+    ) {
+        Assignment assignment = assignmentListView.getSelectionModel().getSelectedItem();
+        if (assignment == null) {
+            makeAlert("No Assignment Selected", "Select an assignment", message);
+            return Optional.empty();
+        }
+        return Optional.of(assignment);
+    }
+
+    private Optional<Path> withWorkingDirectory(
+            String message
+    ) {
+        String raw = pathField.getText();
+        if (raw == null || raw.isBlank()) {
+            makeAlert("No Working Directory", "Select a working directory", message);
+            return Optional.empty();
+        }
+
+        Path workingDir = Paths.get(raw);
+
+        if (!Files.exists(workingDir) || !Files.isDirectory(workingDir)) {
+            makeAlert(
+                    "No Working Directory",
+                    "Select a working directory",
+                    "Working directory does not exist or is not a directory:\n" + workingDir
+            );
+            return Optional.empty();
+        }
+
+        return Optional.of(workingDir);
+    }
+
+    private void runTask(Task<?> task, String startMsg, String successMsg) {
+        // Cancel any running task
+        if (currentTask != null && currentTask.isRunning()) {
+            currentTask.cancel();
+        }
+        currentTask = task;
+        // Bind progress
+        progressBar.progressProperty().unbind();
+        progressBar.visibleProperty().unbind();
+        progressBar.managedProperty().unbind();
+
+        progressBar.progressProperty().bind(task.progressProperty());
+        progressBar.visibleProperty().bind(task.runningProperty());
+        progressBar.managedProperty().bind(task.runningProperty());
+
+        task.messageProperty().addListener((obs, old, msg) -> {
+            if (msg != null) {
+                feedback.appendText(msg + "\n");
+            }
+        });
+        task.setOnRunning(e -> feedback.appendText(startMsg + "\n"));
+        task.setOnSucceeded(e -> {
+            feedback.appendText(successMsg + "\n");
+            currentTask = null;
+        });
+        task.setOnCancelled(e -> {
+            feedback.appendText("Operation cancelled.\n");
+            currentTask = null;
+        });
+        task.setOnFailed(e -> {
+            Throwable ex = task.getException();
+            makeAlert(
+                    "Task Failed",
+                    "Execution Error",
+                    ex == null ? "Unknown error" : ex.getMessage()
+            );
+            currentTask = null;
+        });
+        Thread t = new Thread(task, "GHCU-Task");
+        t.setDaemon(true);
+        t.start();
+    }
+
+    private void runTask(
+            Supplier<Task<?>> taskSupplier,
+            String startMsg,
+            String successMsg
+    ) {
+        Task<?> task = taskSupplier.get();
+        runTask(task, startMsg, successMsg);
+    }
+
+    /* UI builders */
     private Assignment showAssignmentDialog(Assignment existing) {
         final double width = 400.0;
         final double scaling = 0.9;
@@ -882,25 +1112,6 @@ public class MainController implements Initializable {
         return dialog.showAndWait().orElse(null);
     }
 
-    private @NonNull TableColumn<RubricItem, Integer> getRubricItemIntegerTableColumn() {
-        TableColumn<RubricItem, Integer> ptsCol =
-                new TableColumn<>("Points");
-
-        ptsCol.setCellValueFactory(c ->
-                new javafx.beans.property.SimpleObjectProperty<>(
-                        c.getValue().getPoints()
-                ));
-        ptsCol.setCellFactory(
-                TextFieldTableCell.forTableColumn(
-                        new javafx.util.converter.IntegerStringConverter()
-                )
-        );
-        ptsCol.setOnEditCommit(e ->
-                e.getRowValue().setPoints(e.getNewValue())
-        );
-        return ptsCol;
-    }
-
     @SuppressWarnings("unchecked")
     private VBox buildRubricEditor(Rubric rubric) {
         TableView<RubricItem> table = new TableView<>(rubric.getItems());
@@ -943,6 +1154,25 @@ public class MainController implements Initializable {
         );
     }
 
+    private @NonNull TableColumn<RubricItem, Integer> getRubricItemIntegerTableColumn() {
+        TableColumn<RubricItem, Integer> ptsCol =
+                new TableColumn<>("Points");
+
+        ptsCol.setCellValueFactory(c ->
+                new javafx.beans.property.SimpleObjectProperty<>(
+                        c.getValue().getPoints()
+                ));
+        ptsCol.setCellFactory(
+                TextFieldTableCell.forTableColumn(
+                        new javafx.util.converter.IntegerStringConverter()
+                )
+        );
+        ptsCol.setOnEditCommit(e ->
+                e.getRowValue().setPoints(e.getNewValue())
+        );
+        return ptsCol;
+    }
+
     private @NonNull ListView<String> getListView(ObservableList<String> files) {
         ListView<String> fileList = new ListView<>(files);
         fileList.setEditable(true);
@@ -956,154 +1186,66 @@ public class MainController implements Initializable {
         return fileList;
     }
 
-    private void configureFileDragAndDrop(
-            ListView<String> fileList,
-            Supplier<ObservableList<String>> targetListSupplier
-    ) {
-        fileList.setOnDragOver(event -> {
-            if (event.getDragboard().hasFiles()) {
-                event.acceptTransferModes(TransferMode.COPY);
-                fileList.setStyle(DROP_STYLE);
-            }
-            event.consume();
-        });
-
-        fileList.setOnDragExited(event -> {
-            fileList.setStyle("");
-            event.consume();
-        });
-
-        fileList.setOnDragDropped(event -> {
-            Dragboard db = event.getDragboard();
-            boolean success = false;
-
-            ObservableList<String> files = targetListSupplier.get();
-            if (db.hasFiles() && files != null) {
-                for (File file : db.getFiles()) {
-                    String name = file.getName();
-                    if (!files.contains(name)) {
-                        files.add(name);
-                    }
-                }
-                success = true;
-            }
-
-            fileList.setStyle("");
-            event.setDropCompleted(success);
-            event.consume();
-        });
-    }
-
-
     private boolean hasDuplicates(ObservableList<String> items) {
         return items.size() != items.stream().distinct().count();
     }
 
-    private Optional<Assignment> validateAssignmentSelected(
-            String title,
-            String header,
-            String message
-    ) {
-        Assignment assignment = assignmentListView.getSelectionModel().getSelectedItem();
-        if (assignment == null) {
-            makeAlert(title, header, message);
-            return Optional.empty();
-        }
-        return Optional.of(assignment);
+    /* Helper methods */
+    private void attachFileListener(Assignment assignment) {
+        assignment.getFiles().addListener(
+                (javafx.collections.ListChangeListener<String>) change -> {
+                    while (change.next()) {
+                        if (change.wasAdded() || change.wasRemoved()) {
+                            saveAssignments();
+                        }
+                    }
+                }
+        );
     }
 
-    private void withSelectedAssignment(
-            String title,
-            String header,
-            String message,
-            java.util.function.Consumer<Assignment> action
-    ) {
-        Optional<Assignment> opt = validateAssignmentSelected(title, header, message);
-        opt.ifPresent(action);
+    private void attachMetadataListener(Assignment assignment) {
+        assignment.shortNameProperty().addListener((_, _, _) -> {
+            assignmentListView.refresh();
+            saveAssignments();
+        });
+        assignment.fullNameProperty().addListener((_, _, _) -> {
+            assignmentListView.refresh();
+            saveAssignments();
+        });
     }
 
-    private void withWorkingDirectory(
-            String title,
-            String header,
-            String message,
-            java.util.function.Consumer<Path> action
-    ) {
-        String raw = pathField.getText();
-        if (raw == null || raw.trim().isEmpty()) {
-            makeAlert(title, header, message);
-        } else {
-            Path workingDir = Paths.get(raw.trim());
-            if (!Files.exists(workingDir)) {
-                makeAlert(title, header, "Directory does not exist:\n" + workingDir);
-            } else {
-                action.accept(workingDir);
+    private void attachRubricListener(Assignment assignment) {
+        assignment.getRubric().getItems().addListener(
+                (javafx.collections.ListChangeListener<RubricItem>) change -> {
+                    while (change.next()) {
+                        saveAssignments();
+                    }
+                }
+        );
+    }
+
+    private String convertMarkdownToHtml(String markdownText) {
+        Parser parser = Parser.builder().build();
+        Node document = parser.parse(markdownText);
+        HtmlRenderer renderer = HtmlRenderer.builder().build();
+        return renderer.render(document);
+    }
+
+    private void makeAlert(String... messages) {
+        Alert alert = new Alert(Alert.AlertType.ERROR);
+        int length = messages.length;
+        switch (length) {
+            case 1 -> alert.setContentText(messages[0]);
+            case 2 -> {
+                alert.setHeaderText(messages[0]);
+                alert.setContentText(messages[1]);
+            }
+            case 3 -> {
+                alert.setTitle(messages[0]);
+                alert.setHeaderText(messages[1]);
+                alert.setContentText(messages[2]);
             }
         }
+        alert.show();
     }
-
-
-    private void generateReportsAndRegisterMapping(
-            Path submissionsDir,
-            Assignment assignment,
-            boolean runCheckStyle
-    ) throws IOException {
-        Map<Path, Path> mapping =
-                Utilities.generateReports(submissionsDir, assignment, runCheckStyle);
-        Objects.requireNonNull(mapping)
-                .forEach(this::registerReportRepo);
-    }
-
-
-    private void runTask(Task<?> task, String startMsg, String successMsg) {
-        // Cancel any running task
-        if (currentTask != null && currentTask.isRunning()) {
-            currentTask.cancel();
-        }
-        currentTask = task;
-        // Bind progress
-        progressBar.progressProperty().unbind();
-        progressBar.visibleProperty().unbind();
-        progressBar.managedProperty().unbind();
-
-        progressBar.progressProperty().bind(task.progressProperty());
-        progressBar.visibleProperty().bind(task.runningProperty());
-        progressBar.managedProperty().bind(task.runningProperty());
-
-        task.messageProperty().addListener((obs, old, msg) -> {
-            if (msg != null) {
-                feedback.appendText(msg + "\n");
-            }
-        });
-        task.setOnRunning(e -> feedback.appendText(startMsg + "\n"));
-        task.setOnSucceeded(e -> {
-            feedback.appendText(successMsg + "\n");
-            currentTask = null;
-        });
-        task.setOnCancelled(e -> {
-            feedback.appendText("Operation cancelled.\n");
-            currentTask = null;
-        });
-        task.setOnFailed(e -> {
-            Throwable ex = task.getException();
-            makeAlert(
-                    "Task Failed",
-                    "Execution Error",
-                    ex == null ? "Unknown error" : ex.getMessage()
-            );
-            currentTask = null;
-        });
-        Thread t = new Thread(task, "GHCU-Task");
-        t.setDaemon(true);
-        t.start();
-    }
-
-    private void runTask(
-            java.util.function.Supplier<Task<?>> taskSupplier,
-            String startMsg,
-            String successMsg
-    ) {
-        Task<?> task = taskSupplier.get();
-        runTask(task, startMsg, successMsg);
-    }
-
 }

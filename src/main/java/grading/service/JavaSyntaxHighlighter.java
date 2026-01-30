@@ -1,9 +1,7 @@
 /*
- * Course: CSC-1120
- * ASSIGNMENT
- * CLASS
- * Name: Sean Jones
- * Last Updated:
+ * Course: CSC-1110/1020/1120
+ * GitHubClassroom Utilities
+ * Last Updated: 1/29/2026
  */
 package grading.service;
 
@@ -15,6 +13,17 @@ import java.util.Collections;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+/**
+ * Utility class that computes Java syntax highlighting spans for RichTextFX.
+ * <p>
+ * This class tokenizes Java source code using regular expressions and produces
+ * {@link StyleSpans} containing CSS style class names for keywords, strings,
+ * comments, numbers, and annotations.
+ * <p>
+ * This is a pure utility class and cannot be instantiated.
+ *
+ * @author Sean Jones
+ */
 public final class JavaSyntaxHighlighter {
     /* ---------------- Keywords ---------------- */
     private static final String[] KEYWORDS = {
@@ -33,7 +42,7 @@ public final class JavaSyntaxHighlighter {
     private static final Pattern JAVA_PATTERN = Pattern.compile(
             "(?<KEYWORD>\\b(" + String.join("|", KEYWORDS) + ")\\b)"
                     + "|(?<STRING>\"([^\"\\\\]|\\\\.)*\")"
-                    + "|(?<COMMENT>//[^\\n]*|/\\*(.|\\R)*?\\*/)"
+                    + "|(?<COMMENT>//[^\\n]*|/\\*(?:.|\\R)*?\\*/)"
                     + "|(?<NUMBER>\\b\\d+\\b)"
                     + "|(?<ANNOTATION>@\\w+)"
     );
@@ -43,6 +52,25 @@ public final class JavaSyntaxHighlighter {
                 "This is a utility class and cannot be instantiated.");
     }
 
+    /**
+     * Computes syntax highlighting spans for the given Java source text.
+     * <p>
+     * This method scans the input text using a compiled regular expression and
+     * generates {@link StyleSpans} suitable for RichTextFX {@code CodeArea}
+     * styling. Each matched token is assigned a single CSS style class name:
+     * <ul>
+     *     <li>{@code keyword} for Java reserved words</li>
+     *     <li>{@code string} for string literals</li>
+     *     <li>{@code comment} for line and block comments</li>
+     *     <li>{@code number} for integer literals</li>
+     *     <li>{@code annotation} for annotation identifiers</li>
+     * </ul>
+     * Regions of text that do not match any token are returned with no styles.
+     *
+     * @param text Java source code text to highlight
+     * @return a {@link StyleSpans} object that covers the entire input text
+     * @throws NullPointerException if {@code text} is {@code null}
+     */
     public static StyleSpans<Collection<String>> computeHighlighting(String text) {
         StyleSpansBuilder<Collection<String>> spans =
                 new StyleSpansBuilder<>();
@@ -61,7 +89,9 @@ public final class JavaSyntaxHighlighter {
                                                     matcher.group("ANNOTATION") != null
                                                             ? "annotation" : null;
             spans.add(
-                    Collections.singleton(styleClass),
+                    styleClass == null
+                            ? Collections.emptyList()
+                            : Collections.singleton(styleClass),
                     matcher.end() - matcher.start()
             );
             lastEnd = matcher.end();

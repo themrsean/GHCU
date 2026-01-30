@@ -1,9 +1,7 @@
 /*
- * Course: CSC-1120
- * ASSIGNMENT
- * CLASS
- * Name: Sean Jones
- * Last Updated:
+ * Course: CSC-1110/1020/1120
+ * GitHubClassroom Utilities
+ * Last Updated: 1/29/2026
  */
 package comments.service;
 
@@ -17,10 +15,31 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
+/**
+ * Service responsible for inserting and tracking injected comments in a grading report.
+ * <p>
+ * This service supports:
+ * <ul>
+ *     <li>Injecting rendered template text into an editor</li>
+ *     <li>Removing previously injected text</li>
+ *     <li>Maintaining injected comment offsets as the user edits the document</li>
+ * </ul>
+ * <p>
+ * Offset tracking is based on the {@link PlainTextChange} events produced by RichTextFX.
+ *
+ * @author Sean Jones
+ */
 public final class CommentInjectionService {
 
     /**
-     * Injects a comment at the current caret position.
+     * Inserts the rendered template text at the editor caret position and records
+     * the injected range in the {@link ReportState}.
+     *
+     * @param template template to render and inject
+     * @param editor editor to modify
+     * @param reportState report state to update
+     * @return the {@link InjectedComment} representing the injected range
+     * @throws NullPointerException if any argument is {@code null}
      */
     public InjectedComment inject(
             CommentTemplate template,
@@ -37,7 +56,7 @@ public final class CommentInjectionService {
         editor.insertText(insertPos, renderedText);
 
         InjectedComment injected = InjectedComment.create(
-                template.getId(),
+                template.id(),
                 insertPos,
                 insertPos + renderedText.length(),
                 renderedText
@@ -48,7 +67,13 @@ public final class CommentInjectionService {
     }
 
     /**
-     * Removes an injected comment from the editor and report state.
+     * Removes an injected comment by deleting its text range from the editor and removing
+     * the comment from {@link ReportState}.
+     *
+     * @param comment injected comment to remove
+     * @param editor editor to modify
+     * @param reportState report state to update
+     * @throws NullPointerException if any argument is {@code null}
      */
     public void remove(
             InjectedComment comment,
@@ -60,8 +85,8 @@ public final class CommentInjectionService {
         Objects.requireNonNull(reportState, "reportState");
 
         editor.replaceText(
-                comment.getStartOffset(),
-                comment.getEndOffset(),
+                comment.startOffset(),
+                comment.endOffset(),
                 ""
         );
 
@@ -69,10 +94,15 @@ public final class CommentInjectionService {
     }
 
     /**
-     * Updates injected comment offsets in response to a text change.
+     * Updates all injected comment offsets in response to a text change.
+     * <p>
+     * This should be called whenever the editor produces a {@link PlainTextChange}.
+     * The injected comment list is rewritten with updated ranges. Any injected comment
+     * that is fully deleted by the edit is removed from the state.
      *
-     * This must be called for *every* PlainTextChange emitted by the editor,
-     * including undo/redo.
+     * @param change RichTextFX text change event
+     * @param reportState report state to update
+     * @throws NullPointerException if any argument is {@code null}
      */
     public void onTextChanged(
             PlainTextChange change,
@@ -81,49 +111,120 @@ public final class CommentInjectionService {
         Objects.requireNonNull(change, "change");
         Objects.requireNonNull(reportState, "reportState");
 
-        int position = change.getPosition();
-        int removed = change.getRemoved().length();
-        int inserted = change.getInserted().length();
-        int delta = inserted - removed;
+        int changeStart = change.getPosition();
+        int removedLength = change.getRemoved().length();
+        int insertedLength = change.getInserted().length();
 
-        if (delta == 0) {
-            return;
+        // Removed range is [changeStart, changeEnd)
+        int changeEnd = changeStart + removedLength;
+
+        int delta = insertedLength - removedLength;
+
+        // If the change is a no-op OR there are no injected comments, do nothing.
+        if (removedLength != 0 || insertedLength != 0) {
+            List<InjectedComment> current = reportState.getInjectedComments();
+            if (!current.isEmpty()) {
+                List<InjectedComment> updated = new ArrayList<>(current.size());
+                for (InjectedComment c : current) {
+                    InjectedComment next = updateOffsets(c, changeStart, changeEnd, delta);
+                    if (next != null) {
+                        updated.add(next);
+                    }
+                }
+                reportState.replaceInjectedComments(updated);
+            }
         }
-
-        List<InjectedComment> updated = new ArrayList<>();
-
-        for (InjectedComment c : reportState.getInjectedComments()) {
-            updated.add(updateOffsets(c, position, delta));
-        }
-
-        reportState.replaceInjectedComments(updated);
     }
+
 
     /* ------------------------------------------------------------
        Offset Logic
        ------------------------------------------------------------ */
 
+    /**
+     * Updates an injected comment range based on a text edit.
+     *
+     * @param comment injected comment to update
+     * @param changeStart start offset of the change (inclusive)
+     * @param changeEnd end offset of the removed range (exclusive)
+     * @param delta net length change (insertedLength - removedLength)
+     * @return updated comment, or {@code null} if the change deletes the comment entirely
+     */
     private InjectedComment updateOffsets(
             InjectedComment comment,
-            int changePos,
+            int changeStart,
+            int changeEnd,
             int delta
     ) {
-        int start = comment.getStartOffset();
-        int end = comment.getEndOffset();
+        int start = comment.startOffset();
+        int end = comment.endOffset();
 
-        // Change before comment → shift entire range
-        if (changePos < start) {
-            return comment.shift(delta);
+        boolean insertionOnly = changeStart == changeEnd;
+
+        InjectedComment result;
+
+        // Case 1: edit entirely before comment -> shift whole comment
+        if (changeEnd <= start) {
+            result = comment.shift(delta);
+
+            // Case 2: edit entirely after comment -> no-op
+        } else if (changeStart >= end) {
+            result = comment;
+
+            // Case 3: overlap
+        } else if (insertionOnly) {
+            // insertion inside [start,end) expands end
+            result = comment.expand(delta);
+
+        } else if (changeStart <= start && changeEnd >= end) {
+            // Entire comment deleted
+            result = null;
+
+        } else {
+            // Deletion/replacement overlap: compute overlap length inside the comment
+            int overlapStart = Math.max(start, changeStart);
+            int overlapEnd = Math.min(end, changeEnd);
+            int overlapLength = Math.max(0, overlapEnd - overlapStart);
+
+            int newStart = start;
+            int newEnd;
+
+            // If deletion overlaps the start boundary, the start becomes changeStart
+            if (changeStart < start) {
+                newStart = changeStart;
+            }
+
+            // Net delta shifts end
+            newEnd = end + delta;
+
+            // If deletion removed content inside the comment, shrink end accordingly
+            if (overlapLength > 0) {
+                newEnd = newEnd - overlapLength;
+            }
+
+            // Clamp to valid range
+            newStart = Math.max(0, newStart);
+            newEnd = Math.max(newStart, newEnd);
+
+            // Drop collapsed comments
+            if (newEnd == newStart) {
+                result = null;
+            } else {
+                result = new InjectedComment(
+                        comment.id(),
+                        comment.templateId(),
+                        newStart,
+                        newEnd,
+                        comment.renderedText()
+                );
+            }
         }
 
-        // Change inside comment → expand or contract end only
-        if (changePos >= start && changePos < end) {
-            return comment.expand(delta);
-        }
-
-        // Change after comment → no-op
-        return comment;
+        return result;
     }
+
+
+
 
     /* ------------------------------------------------------------
        Rendering
@@ -131,11 +232,16 @@ public final class CommentInjectionService {
 
     /**
      * Renders a template into concrete source text.
-     * This is intentionally simple and deterministic.
+     * <p>
+     * This implementation is intentionally deterministic and simple.
+     * Future extension point: language-aware rendering or placeholder expansion.
+     *
+     * @param template template to render
+     * @return rendered template body text
+     * @throws NullPointerException if {@code template} is {@code null}
      */
     private String render(CommentTemplate template) {
-        // Future extension point: language-aware rendering
-        return template.getBody();
+        Objects.requireNonNull(template, "template");
+        return template.body();
     }
 }
-

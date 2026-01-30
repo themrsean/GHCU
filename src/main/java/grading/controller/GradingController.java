@@ -1,9 +1,7 @@
 /*
- * Course: CSC-1120
- * ASSIGNMENT
- * CLASS
- * Name: Sean Jones
- * Last Updated:
+ * Course: CSC-1110/1020/1120
+ * GitHubClassroom Utilities
+ * Last Updated: 1/29/2026
  */
 package grading.controller;
 
@@ -54,13 +52,34 @@ import java.nio.file.StandardCopyOption;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.ResourceBundle;
+import java.util.Set;
 import java.util.stream.Stream;
 
+/**
+ * JavaFX controller for the grading window.
+ * <p>
+ * This controller provides an interactive editor for generated HTML feedback reports.
+ * It supports report navigation, syntax highlighting, find/replace operations, and
+ * persistent UI state such as sidebar width, font size, scroll position, and the
+ * last opened report.
+ * <p>
+ * The controller also integrates a comment system that allows graders to browse,
+ * inject, and manage reusable feedback comments. In addition, it supports deploying
+ * feedback reports into student repositories and publishing them to GitHub using
+ * the {@link mainui.service.Utilities} git helper methods.
+ * <p>
+ * This class is designed to be loaded via FXML and therefore should not be
+ * instantiated directly.
+ *
+ * @author Sean Jones
+ */
 public class GradingController implements Initializable {
+    /* Constants */
     private static final double FONT_STEP = 1.0;
     private static final double MIN_FONT_SIZE = 8.0;
     private static final double MAX_FONT_SIZE = 32.0;
@@ -68,35 +87,55 @@ public class GradingController implements Initializable {
     private static final double DEFAULT_SIDEBAR_WIDTH = 125.0;
     private static final Duration AUTOSAVE_DELAY = Duration.millis(500);
 
+    /* Application State */
     private final ObservableList<Path> reports =
             FXCollections.observableArrayList();
     private final Map<Path, ReportState> stateMap = new HashMap<>();
-    private final PauseTransition autosaveTimer =
-            new PauseTransition(AUTOSAVE_DELAY);
+    private ReportRepoIndex reportRepoIndex;
+    private Path currentReport;
+
+    /* UI / Persistence */
     private final UIState uiState =
             new UIState(GradingController.class);
-    private VirtualizedScrollPane<CodeArea> editorScroll;
+    private final PauseTransition autosaveTimer =
+            new PauseTransition(AUTOSAVE_DELAY);
+
+    /* Comment system */
     private CommentRepository commentRepository;
     private CommentInjectionService commentInjectionService;
+
+    /* Editor UI state */
+    private VirtualizedScrollPane<CodeArea> editorScroll;
     private CodeArea editor;
     private FindBarController findBarController;
-    private ReportRepoIndex reportRepoIndex;
 
-    @FXML
-    @SuppressWarnings("rawtypes")
-    private ListView reportListView;
-    @FXML
-    private SplitPane splitPane;
-    @FXML
-    private VBox editorContainer;
-
-    private Path currentReport;
+    /* Task/editor runtime state */
     private double fontSize = DEFAULT_FONT_SIZE;
     private boolean programmaticEdit = false;
+
+    /* Find/replace state */
     private String lastSearchText = "";
     private int totalMatches = 0;
     private int currentMatchNumber = 0;
 
+    /* FXML Controls */
+    @SuppressWarnings("rawtypes")
+    @FXML private ListView reportListView;
+    @FXML private SplitPane splitPane;
+    @FXML private VBox editorContainer;
+
+    /* UI wiring and configuration */
+    /**
+     * Initializes the grading UI controller after its FXML fields have been injected.
+     * <p>
+     * This method wires up the report list, editor, autosave behavior, split-pane
+     * persistence, find/replace bar, font settings, and comment system integration.
+     *
+     * @param url the location used to resolve relative paths for the root object,
+     *            or {@code null} if not known
+     * @param resourceBundle the resources used to localize the root object,
+     *                       or {@code null} if not localized
+     */
     @Override
     public void initialize(URL url, ResourceBundle resourceBundle) {
         configureReportListView();
@@ -220,38 +259,34 @@ public class GradingController implements Initializable {
                 new CommentInjectionService();
     }
 
-    public void openCommentBrowser() {
-        if (currentReport != null) {
-            try {
-                FXMLLoader loader = new FXMLLoader(
-                        getClass().getResource("/comments/comment_browser.fxml")
-                );
-                Parent root = loader.load();
-                CommentBrowserFxController fxController = loader.getController();
-                CommentBrowserController logicController =
-                        new CommentBrowserController(
-                                commentRepository,
-                                commentInjectionService
-                        );
-                // CRITICAL: pass the EXISTING editor and ReportState
-                ReportState state = stateMap.get(currentReport);
-                logicController.setActiveContext(editor, state);
-                fxController.setController(logicController);
-                Stage stage = new Stage();
-                stage.setTitle("Comment Browser");
-                stage.setScene(new Scene(root));
-                stage.initOwner(editor.getScene().getWindow());
-                stage.show();
-            } catch (IOException e) {
-                throw new RuntimeException("Failed to open Comment Browser", e);
-            }
-        }
-    }
-
+    /* Public API (called from MainController / Grading window) */
+    /**
+     * Injects the report-to-repository mapping used for deploying and publishing
+     * feedback reports back into student repositories.
+     * <p>
+     * This mapping is typically constructed by the main UI pipeline when reports
+     * are generated, and must be provided before publish/deploy features can work.
+     *
+     * @param reportRepoIndex mapping that associates report file paths with the
+     *                        corresponding repository root directory
+     * @throws NullPointerException if {@code reportRepoIndex} is {@code null}
+     */
     public void setReportRepoIndex(ReportRepoIndex reportRepoIndex) {
+        Objects.requireNonNull(reportRepoIndex, "reportRepoIndex cannot be null");
         this.reportRepoIndex = reportRepoIndex;
     }
 
+
+    /**
+     * Loads all HTML report files from the given folder into the report list view.
+     * <p>
+     * Reports are filtered to files ending in {@code .html} and sorted by filename.
+     * If the UI has a previously opened report saved in persistent state, this
+     * method attempts to restore it; otherwise the first report is selected.
+     *
+     * @param folder directory containing generated feedback reports
+     * @throws IOException if the folder cannot be read
+     */
     @SuppressWarnings("unchecked")
     public void loadReportFolder(Path folder) throws IOException {
         reports.clear();
@@ -270,6 +305,16 @@ public class GradingController implements Initializable {
         }
     }
 
+    /**
+     * Installs keyboard accelerators (shortcuts) for common grading operations.
+     * <p>
+     * This binds actions such as undo/redo, switching reports, font resizing,
+     * saving, find/replace, publishing feedback, and opening the comment browser
+     * to key combinations on the provided {@link Scene}.
+     *
+     * @param scene the scene to attach accelerators to
+     * @throws NullPointerException if {@code scene} is {@code null}
+     */
     public void installAccelerators(Scene scene) {
         Map<KeyCombination, Runnable> accelerators = scene.getAccelerators();
         accelerators.put(
@@ -355,14 +400,30 @@ public class GradingController implements Initializable {
         );
         accelerators.put(
                 new KeyCodeCombination(KeyCode.D, KeyCombination.CONTROL_DOWN),
-                this::deployAndPublishCurrentReport
+                this::publishCurrentReport
         );
         accelerators.put(
-                new KeyCodeCombination(KeyCode.D, KeyCombination.CONTROL_DOWN, KeyCombination.SHIFT_DOWN),
+                new KeyCodeCombination(KeyCode.D, KeyCombination.CONTROL_DOWN,
+                        KeyCombination.SHIFT_DOWN),
                 this::publishAllTouchedRepos
+        );
+        accelerators.put(
+                new KeyCodeCombination(KeyCode.E, KeyCombination.CONTROL_DOWN),
+                this::deployCurrentReportOnly
+        );
+        accelerators.put(
+                new KeyCodeCombination(KeyCode.E, KeyCombination.CONTROL_DOWN,
+                        KeyCombination.SHIFT_DOWN),
+                this::deployAllReportsOnly
         );
     }
 
+    /**
+     * Performs cleanup and persistence actions when the grading window is closing.
+     * <p>
+     * This stops autosave, saves the current report state, and flushes all dirty
+     * reports to disk to avoid losing edits.
+     */
     public void onClose() {
         // Stop autosave timer
         autosaveTimer.stop();
@@ -383,6 +444,46 @@ public class GradingController implements Initializable {
         }
     }
 
+    /**
+     * Opens the comment browser window for the currently selected report.
+     * <p>
+     * The comment browser is connected to the existing editor instance and the
+     * {@link ReportState} for the current report so that comment insertion and
+     * text injection operate on the active grading context.
+     * <p>
+     * If no report is currently selected, this method does nothing.
+     *
+     * @throws RuntimeException if the comment browser FXML cannot be loaded
+     */
+    public void openCommentBrowser() {
+        if (currentReport != null) {
+            try {
+                FXMLLoader loader = new FXMLLoader(
+                        getClass().getResource("/comments/comment_browser.fxml")
+                );
+                Parent root = loader.load();
+                CommentBrowserFxController fxController = loader.getController();
+                CommentBrowserController logicController =
+                        new CommentBrowserController(
+                                commentRepository,
+                                commentInjectionService
+                        );
+                // CRITICAL: pass the EXISTING editor and ReportState
+                ReportState state = stateMap.get(currentReport);
+                logicController.setActiveContext(editor, state);
+                fxController.setController(logicController);
+                Stage stage = new Stage();
+                stage.setTitle("Comment Browser");
+                stage.setScene(new Scene(root));
+                stage.initOwner(editor.getScene().getWindow());
+                stage.show();
+            } catch (IOException e) {
+                throw new RuntimeException("Failed to open Comment Browser", e);
+            }
+        }
+    }
+
+    /* Editor/report operations */
     private void applyFontSize() {
         editor.setStyle("-fx-font-size: " + fontSize + "pt;");
     }
@@ -473,7 +574,7 @@ public class GradingController implements Initializable {
 
     private void undo() {
         ReportState state = stateMap.get(currentReport);
-        if (currentReport != null & state != null || Objects.requireNonNull(state).canUndo()) {
+        if (currentReport != null && state != null && state.canUndo()) {
             programmaticEdit = true;
             editor.replaceText(state.undo());
             programmaticEdit = false;
@@ -521,213 +622,209 @@ public class GradingController implements Initializable {
         }
     }
 
-    private void deployCurrentReportToRepo() {
-        // Ensure latest edits are saved first
+    /* Deploy/publish */
+    private void deployCurrentReportOnly() {
         autosaveCurrentReport();
-
         if (currentReport == null) {
             showInfo("Deploy Report", "No report selected.");
-            return;
-        }
-        if (reportRepoIndex == null) {
+        } else if (reportRepoIndex == null) {
             showError("Deploy Report",
                     "Missing report mapping",
                     "No ReportRepoIndex was provided to GradingController.");
-            return;
-        }
-
-        Optional<Path> repoOpt = reportRepoIndex.findRepoForReport(currentReport);
-        if (repoOpt.isEmpty()) {
-            showError("Deploy Report",
-                    "Repository not found for report",
-                    "No repository mapping exists for:\n" + currentReport);
-            return;
-        }
-
-        Path repoRoot = repoOpt.get();
-
-        // Destination path inside the repo
-        // (choose whatever convention you want)
-        Path destDir = repoRoot.resolve("feedback");
-        Path destFile = destDir.resolve(currentReport.getFileName());
-
-        try {
-            Files.createDirectories(destDir);
-
-            // confirm overwrite if exists
-            if (Files.exists(destFile)) {
-                Alert confirm = new Alert(Alert.AlertType.CONFIRMATION);
-                confirm.setTitle("Overwrite feedback?");
-                confirm.setHeaderText("Feedback report already exists in repository.");
-                confirm.setContentText(destFile.toString());
-                Optional<ButtonType> result = confirm.showAndWait();
-                if (result.isEmpty() || result.get() != ButtonType.OK) {
-                    return;
+        } else {
+            Optional<Path> repoOpt = reportRepoIndex.findRepoForReport(currentReport);
+            if (repoOpt.isEmpty()) {
+                showError("Deploy Report",
+                        "Repository not found for report",
+                        "No repository mapping exists for:\n" + currentReport);
+            } else {
+                Path repoRoot = repoOpt.get();
+                Path destDir = repoRoot.resolve("feedback");
+                Path destFile = destDir.resolve(currentReport.getFileName());
+                try {
+                    Files.createDirectories(destDir);
+                    boolean shouldCopy;
+                    if (Files.exists(destFile)) {
+                        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION);
+                        confirm.setTitle("Overwrite feedback?");
+                        confirm.setHeaderText("Feedback report already exists in repository.");
+                        confirm.setContentText(destFile.toString());
+                        Optional<ButtonType> result = confirm.showAndWait();
+                        shouldCopy = result.isPresent() && result.get() == ButtonType.OK;
+                    } else {
+                        shouldCopy = true;
+                    }
+                    if (shouldCopy) {
+                        Files.copy(currentReport, destFile, StandardCopyOption.REPLACE_EXISTING);
+                        showInfo("Deploy Report",
+                                "Copied report into repo:\n" + destFile);
+                    } else {
+                        showInfo("Deploy Report", "Deploy cancelled.");
+                    }
+                } catch (IOException e) {
+                    showError("Deploy Report",
+                            "Copy failed",
+                            e.getMessage());
                 }
             }
-
-            Files.copy(currentReport, destFile, StandardCopyOption.REPLACE_EXISTING);
-
-            showInfo("Deploy Report",
-                    "Copied report into repo:\n" + destFile);
-
-        } catch (IOException e) {
-            showError("Deploy Report",
-                    "Copy failed",
-                    e.getMessage());
         }
     }
 
-    private void deployAndPublishCurrentReport() {
+    private void publishCurrentReport() {
         autosaveCurrentReport();
-
         if (currentReport == null) {
             showInfo("Publish", "No report selected.");
-            return;
-        }
-        if (reportRepoIndex == null) {
+        } else if (reportRepoIndex == null) {
             showError("Publish", "Missing mapping", "No ReportRepoIndex provided.");
-            return;
+        } else {
+            Optional<Path> repoOpt = reportRepoIndex.findRepoForReport(currentReport);
+            if (repoOpt.isEmpty()) {
+                showError("Publish", "Missing mapping",
+                        "No repository mapping exists for:\n" + currentReport);
+            } else {
+                Path report = currentReport;
+                Path repoRoot = repoOpt.get();
+                Path destDir = repoRoot.resolve("feedback");
+                Thread t = createPublishThread(report, destDir, repoRoot);
+                t.start();
+            }
         }
+    }
 
-        var repoOpt = reportRepoIndex.findRepoForReport(currentReport);
-        if (repoOpt.isEmpty()) {
-            showError("Publish", "Missing mapping",
-                    "No repository mapping exists for:\n" + currentReport);
-            return;
-        }
-
-        Path repoRoot = repoOpt.get();
-        Path destDir = repoRoot.resolve("feedback");
-        Path destFile = destDir.resolve(currentReport.getFileName());
-
-        // Run publish off UI thread
+    private Thread createPublishThread(Path report, Path destDir, Path repoRoot) {
+        Path destFile = destDir.resolve(report.getFileName());
         Task<Void> task = new Task<>() {
             @Override
             protected Void call() throws Exception {
                 Files.createDirectories(destDir);
-                Files.copy(currentReport, destFile, StandardCopyOption.REPLACE_EXISTING);
-
-                // Mark touched
+                Files.copy(report, destFile, StandardCopyOption.REPLACE_EXISTING);
                 reportRepoIndex.markRepoTouched(repoRoot);
-
-                // Publish to remote
                 Utilities.publishFeedbackReport(repoRoot, destFile);
-
                 return null;
             }
         };
-
-        task.setOnSucceeded(e ->
+        task.setOnSucceeded(_ ->
                 showInfo("Publish", "Report deployed + pushed successfully.")
         );
-        task.setOnFailed(e ->
+        task.setOnFailed(_ ->
                 showError("Publish", "Failed", task.getException().getMessage())
         );
-
         Thread t = new Thread(task, "Publish-Feedback");
         t.setDaemon(true);
-        t.start();
+        return t;
+    }
+
+    private void deployAllReportsOnly() {
+        autosaveCurrentReport();
+        if (reportRepoIndex == null) {
+            showError("Deploy All Reports",
+                    "Missing report mapping",
+                    "No ReportRepoIndex was provided to GradingController.");
+        } else {
+            int copied = 0;
+            int missing = 0;
+            int failed = 0;
+            for (Path report : reports) {
+                Optional<Path> repoOpt = reportRepoIndex.findRepoForReport(report);
+                if (repoOpt.isEmpty()) {
+                    ++missing;
+                } else {
+                    Path repoRoot = repoOpt.get();
+                    Path destDir = repoRoot.resolve("feedback");
+                    Path destFile = destDir.resolve(report.getFileName());
+                    try {
+                        Files.createDirectories(destDir);
+                        Files.copy(report, destFile, StandardCopyOption.REPLACE_EXISTING);
+                        ++copied;
+                    } catch (IOException e) {
+                        ++failed;
+                        System.err.println("Failed to deploy report: " + report);
+                        System.err.println("Destination: " + destFile);
+                        System.err.println("Reason: " + e.getMessage());
+                    }
+                }
+            }
+            showInfo("Deploy All Reports",
+                    "Copied: " + copied
+                            + "\nMissing mapping: " + missing
+                            + "\nFailed copies: " + failed);
+        }
     }
 
     private void publishAllTouchedRepos() {
         if (reportRepoIndex == null) {
             showError("Publish All", "Missing mapping", "No ReportRepoIndex provided.");
-            return;
+        } else {
+            Set<Path> repos = reportRepoIndex.touchedReposSnapshot();
+            if (repos.isEmpty()) {
+                showInfo("Publish All", "No repositories have deployed reports yet.");
+            } else {
+                Thread t = createPublishAllThread(repos);
+                t.setDaemon(true);
+                t.start();
+            }
         }
+    }
 
-        var repos = reportRepoIndex.touchedReposSnapshot();
-        if (repos.isEmpty()) {
-            showInfo("Publish All", "No repositories have deployed reports yet.");
-            return;
-        }
-
+    private Thread createPublishAllThread(Set<Path> repos) {
         Task<Void> task = new Task<>() {
             @Override
-            protected Void call() throws Exception {
-                for (Path repo : repos) {
-                    // publish all reports in repo/feedback
-                    Path feedbackDir = repo.resolve("feedback");
-                    if (!Files.isDirectory(feedbackDir)) {
-                        continue;
-                    }
-                    try (var stream = Files.list(feedbackDir)) {
-                        for (Path f : stream.toList()) {
-                            if (Files.isRegularFile(f) && f.toString().endsWith(".html")) {
-                                Utilities.publishFeedbackReport(repo, f);
-                            }
-                        }
-                    }
-                }
+            protected Void call() {
+                Set<Path> repoSnapshots = Set.copyOf(repos);
+                PublishResult result = publishRepos(repoSnapshots);
+                Platform.runLater(() ->
+                        showInfo("Publish All",
+                                "Published files: " + result.getPublished()
+                                        + "\nFailures: " + result.getFailed())
+                );
                 return null;
             }
         };
-
-        task.setOnSucceeded(e ->
-                showInfo("Publish All", "Pulled + pushed feedback for all touched repositories.")
-        );
-        task.setOnFailed(e ->
-                showError("Publish All", "Failed", task.getException().getMessage())
-        );
-
         Thread t = new Thread(task, "Publish-All-Feedback");
         t.setDaemon(true);
-        t.start();
+        return t;
     }
 
-    private void showInfo(String title, String msg) {
-        Alert a = new Alert(Alert.AlertType.INFORMATION);
-        a.setTitle(title);
-        a.setHeaderText(null);
-        a.setContentText(msg);
-        a.initOwner(editor.getScene().getWindow());
-        a.showAndWait();
-    }
-
-    private void showError(String title, String header, String msg) {
-        Alert a = new Alert(Alert.AlertType.ERROR);
-        a.setTitle(title);
-        a.setHeaderText(header);
-        a.setContentText(msg);
-        a.initOwner(editor.getScene().getWindow());
-        a.showAndWait();
-    }
-
-    private void deployAllReportsToRepos() {
-        autosaveCurrentReport();
-
-        if (reportRepoIndex == null) {
-            showError("Deploy All Reports",
-                    "Missing report mapping",
-                    "No ReportRepoIndex was provided to GradingController.");
-            return;
+    private PublishResult publishRepos(Set<Path> repos) {
+        PublishResult result = new PublishResult();
+        for (Path repo : repos) {
+            publishRepo(repo, result);
         }
+        return result;
+    }
 
-        int copied = 0;
-        int missing = 0;
-
-        for (Path report : reports) {
-            Optional<Path> repoOpt = reportRepoIndex.findRepoForReport(report);
-            if (repoOpt.isEmpty()) {
-                missing++;
-                continue;
+    private void publishRepo(Path repo, PublishResult result) {
+        Path feedbackDir = repo.resolve("feedback");
+        if (Files.isDirectory(feedbackDir)) {
+            try (Stream<Path> stream = Files.list(feedbackDir)) {
+                List<Path> files = stream.toList();
+                for (Path file : files) {
+                    publishFileIfHtml(repo, file, result);
+                }
+            } catch (IOException e) {
+                result.incFailed();
+                System.err.println("Failed to list feedback dir: " + feedbackDir);
+                System.err.println("Reason: " + e.getMessage());
             }
-            Path repoRoot = repoOpt.get();
-            Path destDir = repoRoot.resolve("feedback");
-            Path destFile = destDir.resolve(report.getFileName());
+        }
+    }
+
+    private void publishFileIfHtml(Path repo, Path file, PublishResult result) {
+        boolean isHtml = Files.isRegularFile(file) && file.toString().endsWith(".html");
+        if (isHtml) {
             try {
-                Files.createDirectories(destDir);
-                Files.copy(report, destFile, StandardCopyOption.REPLACE_EXISTING);
-                copied++;
-            } catch (IOException ignored) {
-                // ignore or count failures
+                Utilities.publishFeedbackReport(repo, file);
+                result.incPublished();
+            } catch (IOException | InterruptedException e) {
+                result.incFailed();
+                System.err.println("Publish failed: " + repo);
+                System.err.println("File: " + file);
+                System.err.println("Reason: " + e.getMessage());
             }
         }
-
-        showInfo("Deploy All Reports",
-                "Copied: " + copied + "\nMissing mapping: " + missing);
     }
 
+    /* Find/replace */
     void findNext(String query) {
         find(query, true);
     }
@@ -780,7 +877,7 @@ public class GradingController implements Initializable {
         }
     }
 
-    private java.util.List<Integer> findAllMatches(String text, String query) {
+    private List<Integer> findAllMatches(String text, String query) {
         java.util.List<Integer> matches = new java.util.ArrayList<>();
         if (query == null || query.isEmpty()) {
             return matches;
@@ -869,4 +966,45 @@ public class GradingController implements Initializable {
         spans.add(java.util.Collections.emptyList(), text.length() - last);
         return spans.create();
     }
+
+    /* Dialog helpers*/
+    private void showInfo(String title, String msg) {
+        Alert a = new Alert(Alert.AlertType.INFORMATION);
+        a.setTitle(title);
+        a.setHeaderText(null);
+        a.setContentText(msg);
+        a.initOwner(editor.getScene().getWindow());
+        a.showAndWait();
+    }
+
+    private void showError(String title, String header, String msg) {
+        Alert a = new Alert(Alert.AlertType.ERROR);
+        a.setTitle(title);
+        a.setHeaderText(header);
+        a.setContentText(msg);
+        a.initOwner(editor.getScene().getWindow());
+        a.showAndWait();
+    }
+
+    private static final class PublishResult {
+        private int published;
+        private int failed;
+
+        private void incPublished() {
+            ++published;
+        }
+
+        private void incFailed() {
+            ++failed;
+        }
+
+        private int getPublished() {
+            return published;
+        }
+
+        private int getFailed() {
+            return failed;
+        }
+    }
+
 }
