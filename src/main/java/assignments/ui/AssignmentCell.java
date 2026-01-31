@@ -14,12 +14,36 @@ import javafx.scene.input.TransferMode;
 
 import java.io.File;
 
+/**
+ * Custom {@link ListCell} implementation for displaying and editing {@link Assignment}
+ * objects in the assignment list view.
+ * <p>
+ * This cell supports:
+ * </p>
+ * <ul>
+ *     <li>Inline editing of assignment metadata (short name and full name) via
+ *     double-click</li>
+ *     <li>Drag-and-drop of files and folders onto an assignment to add file names
+ *     to the assignment's required file list</li>
+ * </ul>
+ *
+ * <p>
+ * Drag-and-drop supports recursively expanding folders and adding all allowed files
+ * found within them. Only supported file types (currently {@code .java} and
+ * {@code .fxml}) are added.
+ * </p>
+ *
+ * @author Sean Jones
+ */
 public class AssignmentCell extends ListCell<Assignment> {
     private static final String DROP_STYLE =
             "-fx-background-color: derive(-fx-accent, 70%);" +
                     "-fx-border-color: -fx-accent; -fx-border-width: 2;";
     private final TextField editor = new TextField();
 
+    /**
+     * Constructs an assignment cell and configures editing and drag-and-drop behavior.
+     */
     public AssignmentCell() {
         configureInlineEdit();
         configureDragAndDrop();
@@ -31,7 +55,6 @@ public class AssignmentCell extends ListCell<Assignment> {
                 startEdit();
             }
         });
-
         editor.setOnAction(_ -> {
             Assignment a = getItem();
             if (a != null) {
@@ -64,18 +87,43 @@ public class AssignmentCell extends ListCell<Assignment> {
             boolean success = false;
             if (!isEmpty() && db.hasFiles()) {
                 Assignment assignment = getItem();
-                for (File file : db.getFiles()) {
-                    String name = file.getName();
-                    if (!assignment.getFiles().contains(name)) {
-                        assignment.getFiles().add(name);
+                if (assignment != null) {
+                    for (File f : db.getFiles()) {
+                        if (f.isDirectory()) {
+                            addFolderFiles(assignment, f);
+                        } else {
+                            addSingleFile(assignment, f);
+                        }
                     }
+                    success = true;
                 }
-                success = true;
             }
             setStyle("");
             e.setDropCompleted(success);
             e.consume();
         });
+    }
+
+    private void addFolderFiles(Assignment assignment, File folder) {
+        File[] children = folder.listFiles();
+        if (children != null) {
+            for (File child : children) {
+                if (child.isDirectory()) {
+                    addFolderFiles(assignment, child);
+                } else {
+                    addSingleFile(assignment, child);
+                }
+            }
+        }
+    }
+
+    private void addSingleFile(Assignment assignment, File file) {
+        if (isAllowedFile(file)) {
+            String name = file.getName();
+            if (!assignment.getFiles().contains(name)) {
+                assignment.getFiles().add(name);
+            }
+        }
     }
 
     @Override
@@ -134,4 +182,11 @@ public class AssignmentCell extends ListCell<Assignment> {
     private String format(Assignment a) {
         return a.getShortName() + " – " + a.getFullName();
     }
+
+    private boolean isAllowedFile(File file) {
+        String name = file.getName();
+        return file.isFile()
+                && (name.endsWith(".java") || name.endsWith(".fxml"));
+    }
+
 }
